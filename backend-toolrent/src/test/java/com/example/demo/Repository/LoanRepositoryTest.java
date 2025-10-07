@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDate;
 
@@ -69,7 +70,6 @@ class LoanRepositoryTest {
     }
 
     @Nested
-    @DisplayName("Tests de countActiveByClientId")
     class CountActiveByClientIdTests {
 
         @Test
