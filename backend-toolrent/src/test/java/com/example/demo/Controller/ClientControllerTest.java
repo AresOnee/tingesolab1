@@ -1,7 +1,5 @@
 package com.example.demo.Controller;
 
-
-import com.example.demo.Controller.ClientController;
 import com.example.demo.Entity.ClientEntity;
 import com.example.demo.Service.ClientService;
 import org.junit.jupiter.api.DisplayName;
@@ -27,9 +25,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 class ClientControllerTest {
 
-    @Autowired private MockMvc mvc;
+    @Autowired
+    private MockMvc mvc;
 
-    @MockBean @SuppressWarnings("removal") private ClientService clientService;
+    @MockBean
+    @SuppressWarnings("removal")
+    private ClientService clientService;
 
     @Test
     @DisplayName("GET /api/v1/clients/ ⇒ 200 y lista")
@@ -53,8 +54,8 @@ class ClientControllerTest {
         mvc.perform(post("/api/v1/clients")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-          {"name":"Diego","rut":"20.204.010-5","email":"diego@toolrent.cl","phone":"+569...","state":"Activo"}
-        """))
+                            {"name":"Diego","rut":"20.204.010-5","email":"diego@toolrent.cl","phone":"+569...","state":"Activo"}
+                            """))
                 .andExpect(status().isCreated())
                 .andExpect(header().exists("Location"))
                 .andExpect(jsonPath("$.id").value(99))
@@ -70,8 +71,8 @@ class ClientControllerTest {
         mvc.perform(post("/api/v1/clients")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-          {"name":"Diego","rut":"20.204.010-5","email":"diego@toolrent.cl","phone":"+569...","state":"Activo"}
-        """))
+                            {"name":"Diego","rut":"20.204.010-5","email":"diego@toolrent.cl","phone":"+569...","state":"Activo"}
+                            """))
                 .andExpect(status().isConflict());
     }
 
@@ -83,8 +84,9 @@ class ClientControllerTest {
 
         mvc.perform(post("/api/v1/clients")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{"name":""}"""))
+                        .content("""
+                            {"name":""}
+                            """))
                 .andExpect(status().isBadRequest());
     }
 }
-

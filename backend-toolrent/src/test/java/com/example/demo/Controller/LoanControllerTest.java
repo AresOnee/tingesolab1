@@ -1,6 +1,5 @@
 package com.example.demo.Controller;
 
-import com.example.demo.Controller.LoanController;
 import com.example.demo.Entity.ClientEntity;
 import com.example.demo.Entity.LoanEntity;
 import com.example.demo.Entity.ToolEntity;
@@ -27,11 +26,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 class LoanControllerTest {
 
-    private static final String CREATE_ENDPOINT = "/api/v1/loans/create"; // <-- cámbialo si tu mapping es otro
+    private static final String CREATE_ENDPOINT = "/api/v1/loans/create";
 
-    @Autowired private MockMvc mvc;
+    @Autowired
+    private MockMvc mvc;
 
-    @MockBean @SuppressWarnings("removal")  private LoanService loanService;
+    @MockBean
+    @SuppressWarnings("removal")
+    private LoanService loanService;
 
     @Test
     @DisplayName("POST /api/v1/loans/create ⇒ 201 y JSON")
@@ -41,7 +43,10 @@ class LoanControllerTest {
         saved.setClient(new ClientEntity(10L, "Juan","12.345.678-9","+569...","juan@toolrent.cl","Activo"));
 
         ToolEntity tool = new ToolEntity();
-        tool.setId(20L); tool.setName("Taladro"); tool.setStock(2); tool.setStatus("Disponible");
+        tool.setId(20L);
+        tool.setName("Taladro");
+        tool.setStock(2);
+        tool.setStatus("Disponible");
         saved.setTool(tool);
 
         saved.setStartDate(LocalDate.now());
@@ -56,8 +61,8 @@ class LoanControllerTest {
         mvc.perform(post(CREATE_ENDPOINT)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-          {"clientId":10,"toolId":20,"dueDate":"2025-10-10"}
-        """))
+                            {"clientId":10,"toolId":20,"dueDate":"2025-10-10"}
+                            """))
                 .andExpect(status().isCreated())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(123))
@@ -73,8 +78,8 @@ class LoanControllerTest {
         mvc.perform(post(CREATE_ENDPOINT)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-          {"clientId":10,"toolId":20,"dueDate":"2025-10-10"}
-        """))
+                            {"clientId":10,"toolId":20,"dueDate":"2025-10-10"}
+                            """))
                 .andExpect(status().isConflict());
     }
 
@@ -86,7 +91,9 @@ class LoanControllerTest {
 
         mvc.perform(post(CREATE_ENDPOINT)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{"clientId":null}"""))
+                        .content("""
+                            {"clientId":null}
+                            """))
                 .andExpect(status().isBadRequest());
     }
 }
