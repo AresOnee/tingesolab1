@@ -169,7 +169,7 @@ class LoanServiceTest {
 
         assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, due))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("mismo");
+                .hasMessageContaining("misma");
 
         verify(loanRepository, never()).save(any());
     }
@@ -207,5 +207,295 @@ class LoanServiceTest {
 
         verify(loanRepository).save(any(LoanEntity.class));
         verify(toolRepository).save(any(ToolEntity.class));
+    }
+
+    @Nested
+    @DisplayName("Tests de returnTool (devolución de herramientas)")
+    class ReturnToolTests {
+
+        @Test
+        @DisplayName("Devolución a tiempo en buen estado: sin multa, stock aumenta, status Devuelto")
+        void returnTool_onTime_noDamage() {
+            // Given: Un préstamo activo que se devuelve a tiempo
+            Long loanId = 100L;
+            LocalDate startDate = LocalDate.now().minusDays(5);
+            LocalDate dueDate = LocalDate.now().plusDays(2); // aún no vence
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Prestada", 2); // stock actual = 2
+
+            LoanEntity activeLoan = new LoanEntity();
+            activeLoan.setId(loanId);
+            activeLoan.setClient(client);
+            activeLoan.setTool(tool);
+            activeLoan.setStartDate(startDate);
+            activeLoan.setDueDate(dueDate);
+            activeLoan.setReturnDate(null);
+            activeLoan.setStatus("Vigente");
+            activeLoan.setFine(0.0);
+            activeLoan.setDamaged(false);
+            activeLoan.setIrreparable(false);
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Se devuelve la herramienta a tiempo y sin daños
+            LoanEntity returned = loanService.returnTool(loanId, false, false);
+
+            // Then:
+            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
+            assertThat(returned.getStatus()).isEqualTo("Devuelto");
+            assertThat(returned.getFine()).isEqualTo(0.0); // sin multa
+            assertThat(tool.getStock()).isEqualTo(3); // aumentó de 2 a 3
+            assertThat(tool.getStatus()).isEqualTo("Disponible");
+
+            verify(loanRepository).save(any(LoanEntity.class));
+            verify(toolRepository).save(any(ToolEntity.class));
+        }
+
+        @Test
+        @DisplayName("Devolución con atraso: genera multa, status Atrasado")
+        void returnTool_late_generatesFine() {
+            // Given: Un préstamo que ya venció hace 3 días
+            Long loanId = 101L;
+            LocalDate dueDate = LocalDate.now().minusDays(3); // venció hace 3 días
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Prestada", 1);
+
+            LoanEntity overdueLoan = new LoanEntity();
+            overdueLoan.setId(loanId);
+            overdueLoan.setClient(client);
+            overdueLoan.setTool(tool);
+            overdueLoan.setStartDate(LocalDate.now().minusDays(10));
+            overdueLoan.setDueDate(dueDate);
+            overdueLoan.setReturnDate(null);
+            overdueLoan.setStatus("Atrasado");
+            overdueLoan.setFine(0.0);
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(overdueLoan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Se devuelve con 3 días de atraso
+            LoanEntity returned = loanService.returnTool(loanId, false, false);
+
+            // Then: Debe tener multa de 3.0 (3 días * 1.0 por día)
+            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
+            assertThat(returned.getStatus()).isEqualTo("Atrasado");
+            assertThat(returned.getFine()).isEqualTo(3.0); // 3 días de multa
+            assertThat(tool.getStock()).isEqualTo(2); // se recuperó el stock
+            assertThat(tool.getStatus()).isEqualTo("Disponible");
+        }
+
+        @Test
+        @DisplayName("Devolución con daño reparable: herramienta va a reparación, no recupera stock")
+        void returnTool_damaged_reparable() {
+            // Given: Un préstamo activo
+            Long loanId = 102L;
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Prestada", 3);
+
+            LoanEntity activeLoan = new LoanEntity();
+            activeLoan.setId(loanId);
+            activeLoan.setClient(client);
+            activeLoan.setTool(tool);
+            activeLoan.setStartDate(LocalDate.now().minusDays(3));
+            activeLoan.setDueDate(LocalDate.now().plusDays(4));
+            activeLoan.setReturnDate(null);
+            activeLoan.setStatus("Vigente");
+            activeLoan.setFine(0.0);
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Se devuelve dañada pero reparable (damaged=true, irreparable=false)
+            LoanEntity returned = loanService.returnTool(loanId, true, false);
+
+            // Then:
+            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
+            assertThat(returned.getStatus()).isEqualTo("Devuelto");
+            assertThat(tool.getStatus()).isEqualTo("En reparación");
+            assertThat(tool.getStock()).isEqualTo(3); // NO aumenta el stock
+            assertThat(returned.getFine()).isEqualTo(0.0); // sin multa adicional
+        }
+
+        @Test
+        @DisplayName("Devolución con daño irreparable: cobra reposición, herramienta dada de baja")
+        void returnTool_damaged_irreparable() {
+            // Given: Un préstamo activo con herramienta de valor 50000
+            Long loanId = 103L;
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Prestada", 2);
+            tool.setReplacementValue(50000); // valor de reposición
+
+            LoanEntity activeLoan = new LoanEntity();
+            activeLoan.setId(loanId);
+            activeLoan.setClient(client);
+            activeLoan.setTool(tool);
+            activeLoan.setStartDate(LocalDate.now().minusDays(2));
+            activeLoan.setDueDate(LocalDate.now().plusDays(5));
+            activeLoan.setReturnDate(null);
+            activeLoan.setStatus("Vigente");
+            activeLoan.setFine(0.0);
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Se devuelve con daño irreparable (damaged=true, irreparable=true)
+            LoanEntity returned = loanService.returnTool(loanId, true, true);
+
+            // Then:
+            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
+            assertThat(returned.getFine()).isEqualTo(50000.0); // cobra el valor de reposición
+            assertThat(tool.getStatus()).isEqualTo("Dada de baja");
+            assertThat(tool.getStock()).isEqualTo(2); // NO aumenta el stock, se da de baja
+        }
+
+        @Test
+        @DisplayName("Devolución con atraso Y daño irreparable: multa por atraso + valor de reposición")
+        void returnTool_late_and_irreparable() {
+            // Given: Préstamo vencido hace 5 días, herramienta vale 80000
+            Long loanId = 104L;
+            LocalDate dueDate = LocalDate.now().minusDays(5);
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Prestada", 1);
+            tool.setReplacementValue(80000);
+
+            LoanEntity overdueLoan = new LoanEntity();
+            overdueLoan.setId(loanId);
+            overdueLoan.setClient(client);
+            overdueLoan.setTool(tool);
+            overdueLoan.setStartDate(LocalDate.now().minusDays(12));
+            overdueLoan.setDueDate(dueDate);
+            overdueLoan.setReturnDate(null);
+            overdueLoan.setStatus("Atrasado");
+            overdueLoan.setFine(0.0);
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(overdueLoan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Se devuelve con 5 días de atraso Y daño irreparable
+            LoanEntity returned = loanService.returnTool(loanId, true, true);
+
+            // Then: Multa = 5 días + 80000 de reposición = 80005.0
+            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
+            assertThat(returned.getStatus()).isEqualTo("Atrasado"); // porque llegó tarde
+            assertThat(returned.getFine()).isEqualTo(80005.0); // 5 de atraso + 80000 de reposición
+            assertThat(tool.getStatus()).isEqualTo("Dada de baja");
+            assertThat(tool.getStock()).isEqualTo(1); // no aumenta
+        }
+
+        @Test
+        @DisplayName("Devolución de préstamo ya devuelto: no hace nada, retorna el mismo préstamo")
+        void returnTool_alreadyReturned_noChanges() {
+            // Given: Un préstamo que ya fue devuelto anteriormente
+            Long loanId = 105L;
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Disponible", 5);
+
+            LoanEntity alreadyReturned = new LoanEntity();
+            alreadyReturned.setId(loanId);
+            alreadyReturned.setClient(client);
+            alreadyReturned.setTool(tool);
+            alreadyReturned.setStartDate(LocalDate.now().minusDays(10));
+            alreadyReturned.setDueDate(LocalDate.now().minusDays(3));
+            alreadyReturned.setReturnDate(LocalDate.now().minusDays(2)); // ya tiene fecha de devolución
+            alreadyReturned.setStatus("Devuelto"); // ya está devuelto
+            alreadyReturned.setFine(0.0);
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(alreadyReturned));
+
+            // When: Intentamos devolverlo nuevamente
+            LoanEntity returned = loanService.returnTool(loanId, false, false);
+
+            // Then: No debe cambiar nada, retorna el mismo préstamo
+            assertThat(returned).isSameAs(alreadyReturned);
+            assertThat(returned.getStatus()).isEqualTo("Devuelto");
+            assertThat(tool.getStock()).isEqualTo(5); // no cambió
+
+            // No debe guardar nada porque ya estaba devuelto
+            verify(loanRepository, never()).save(any());
+            verify(toolRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Devolución con ID inexistente: lanza IllegalArgumentException")
+        void returnTool_notFound_throwsException() {
+            // Given: ID de préstamo que no existe
+            Long nonExistentId = 999L;
+
+            when(loanRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+
+            // When & Then: Debe lanzar excepción
+            assertThatThrownBy(() -> loanService.returnTool(nonExistentId, false, false))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Loan not found");
+
+            verify(loanRepository, never()).save(any());
+            verify(toolRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Devolución con multa preexistente: suma la nueva multa a la anterior")
+        void returnTool_withExistingFine_addsFine() {
+            // Given: Préstamo que ya tiene una multa de 10.0 y se devuelve 2 días tarde
+            Long loanId = 106L;
+            LocalDate dueDate = LocalDate.now().minusDays(2);
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(10L, "Prestada", 1);
+
+            LoanEntity loanWithFine = new LoanEntity();
+            loanWithFine.setId(loanId);
+            loanWithFine.setClient(client);
+            loanWithFine.setTool(tool);
+            loanWithFine.setStartDate(LocalDate.now().minusDays(8));
+            loanWithFine.setDueDate(dueDate);
+            loanWithFine.setReturnDate(null);
+            loanWithFine.setStatus("Atrasado");
+            loanWithFine.setFine(10.0); // ya tiene multa de 10.0
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(loanWithFine));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Se devuelve 2 días tarde
+            LoanEntity returned = loanService.returnTool(loanId, false, false);
+
+            // Then: La multa debe ser 10.0 (anterior) + 2.0 (nuevos días) = 12.0
+            assertThat(returned.getFine()).isEqualTo(12.0);
+            assertThat(returned.getStatus()).isEqualTo("Atrasado");
+        }
+    }
+
+    //metodo getAllLoans para completar la cobertura
+    @Test
+    @DisplayName("getAllLoans: retorna todos los préstamos")
+    void getAllLoans_returnsAll() {
+        // Given: Varios préstamos en la base de datos
+        List<LoanEntity> loans = List.of(
+                activeLoan(1L, 10L, LocalDate.now().minusDays(2), LocalDate.now().plusDays(5)),
+                activeLoan(2L, 11L, LocalDate.now().minusDays(1), LocalDate.now().plusDays(3))
+        );
+
+        when(loanRepository.findAll()).thenReturn(loans);
+
+        // When: Obtenemos todos los préstamos
+        List<LoanEntity> result = loanService.getAllLoans();
+
+        // Then: Debe retornar la lista completa
+        assertThat(result).hasSize(2);
+        assertThat(result).isEqualTo(loans);
+
+        verify(loanRepository).findAll();
     }
 }

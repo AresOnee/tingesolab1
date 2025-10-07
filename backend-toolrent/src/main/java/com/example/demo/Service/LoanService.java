@@ -45,34 +45,47 @@ public class LoanService {
         LocalDate today = LocalDate.now();
         List<LoanEntity> allLoans = loanRepository.findAll();
 
-        // 2.1) Cliente con préstamos vencidos (returnDate == null y dueDate < hoy)
+// 2.0.1) Herramienta debe estar "Disponible"
+        if (!"Disponible".equalsIgnoreCase(tool.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "La herramienta no está disponible para préstamo"
+            );
+        }
+
+// 2.0.2) Sin stock (mover esto antes de las otras reglas)
+        if (tool.getStock() <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Herramienta sin stock");
+        }
+
+// 2.1) Cliente con préstamos vencidos (returnDate == null y dueDate < hoy)
         boolean hasOverdue = allLoans.stream()
                 .filter(l -> Objects.equals(l.getClient().getId(), clientId))
                 .anyMatch(l -> l.getReturnDate() == null
                         && l.getDueDate() != null
                         && l.getDueDate().isBefore(today));
         if (hasOverdue) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cliente con préstamos vencidos");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cliente con préstamos vencidos");
         }
 
-        // 2.2) Máximo 5 préstamos activos por cliente (returnDate == null)
+// 2.2) Máximo 5 préstamos activos por cliente (returnDate == null)
         long activeCount = allLoans.stream()
                 .filter(l -> Objects.equals(l.getClient().getId(), clientId))
                 .filter(l -> l.getReturnDate() == null)
                 .count();
         if (activeCount >= 5) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Máximo 5 préstamos activos por cliente");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Máximo 5 préstamos activos por cliente");
         }
 
-        // 2.3) Evitar que el cliente tenga la misma herramienta activa en paralelo
+// 2.3) Evitar que el cliente tenga la misma herramienta activa en paralelo
         boolean duplicateTool = allLoans.stream()
                 .filter(l -> Objects.equals(l.getClient().getId(), clientId))
                 .filter(l -> Objects.equals(l.getTool().getId(), toolId))
                 .anyMatch(l -> l.getReturnDate() == null);
         if (duplicateTool) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Ya existe un préstamo activo de esta herramienta para el cliente"
+                    HttpStatus.CONFLICT,
+                    "Ya existe un préstamo activo de esta misma herramienta para el cliente"
             );
         }
 

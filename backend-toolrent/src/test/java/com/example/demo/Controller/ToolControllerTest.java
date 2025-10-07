@@ -70,8 +70,8 @@ class ToolControllerTest {
         mvc.perform(post("/api/v1/tools")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-          {"name":"Rotomartillo","category":"Eléctricas","replacementValue":120000,"stock":3}
-        """))
+                        {"name":"Rotomartillo","category":"Eléctricas","replacementValue":120000,"stock":3,"status":"Disponible"}
+                        """))
                 .andExpect(status().isConflict());
     }
 
