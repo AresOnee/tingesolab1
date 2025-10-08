@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -207,6 +208,92 @@ class LoanServiceTest {
 
         verify(loanRepository).save(any(LoanEntity.class));
         verify(toolRepository).save(any(ToolEntity.class));
+    }
+
+    // ========== NUEVOS TESTS PARA CUBRIR LAMBDAS Y VALIDACIONES ==========
+
+    @Test
+    @DisplayName("createLoan: debe lanzar 404 cuando cliente no existe (lambda línea 40)")
+    void createLoan_clientNotFound_throwsException() {
+        // Given
+        Long clientId = 999L;
+        Long toolId = 1L;
+        LocalDate dueDate = LocalDate.now().plusDays(7);
+
+        when(clientRepository.findById(clientId)).thenReturn(Optional.empty());
+
+        // When & Then
+        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Cliente no encontrado")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        verify(clientRepository).findById(clientId);
+        verify(toolRepository, never()).findById(any());
+        verify(loanRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createLoan: debe lanzar 404 cuando herramienta no existe (lambda línea 42)")
+    void createLoan_toolNotFound_throwsException() {
+        // Given
+        Long clientId = 1L;
+        Long toolId = 999L;
+        LocalDate dueDate = LocalDate.now().plusDays(7);
+
+        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
+        when(toolRepository.findById(toolId)).thenReturn(Optional.empty());
+
+        // When & Then
+        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Herramienta no encontrada")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        verify(clientRepository).findById(clientId);
+        verify(toolRepository).findById(toolId);
+        verify(loanRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createLoan: debe lanzar 400 cuando clientId es null")
+    void createLoan_nullClientId_throwsBadRequest() {
+        // When & Then
+        assertThatThrownBy(() -> loanService.createLoan(null, 1L, LocalDate.now().plusDays(7)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("clientId, toolId y dueDate son obligatorios")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        verify(clientRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("createLoan: debe lanzar 400 cuando toolId es null")
+    void createLoan_nullToolId_throwsBadRequest() {
+        // When & Then
+        assertThatThrownBy(() -> loanService.createLoan(1L, null, LocalDate.now().plusDays(7)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("clientId, toolId y dueDate son obligatorios")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        verify(clientRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("createLoan: debe lanzar 400 cuando dueDate es null")
+    void createLoan_nullDueDate_throwsBadRequest() {
+        // When & Then
+        assertThatThrownBy(() -> loanService.createLoan(1L, 1L, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("clientId, toolId y dueDate son obligatorios")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        verify(clientRepository, never()).findById(any());
     }
 
     @Nested
@@ -475,6 +562,72 @@ class LoanServiceTest {
             assertThat(returned.getFine()).isEqualTo(12.0);
             assertThat(returned.getStatus()).isEqualTo("Atrasado");
         }
+
+        // ===== NUEVOS TESTS PARA CUBRIR CASOS CON FINE NULL =====
+
+        @Test
+        @DisplayName("returnTool: debe manejar correctamente cuando fine es null al calcular multa por atraso")
+        void returnTool_nullFine_calculatesCorrectly() {
+            // Given
+            Long loanId = 107L;
+            LocalDate dueDate = LocalDate.now().minusDays(5); // 5 días de atraso
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(1L, "Prestada", 1);
+
+            LoanEntity loan = new LoanEntity();
+            loan.setId(loanId);
+            loan.setClient(client);
+            loan.setTool(tool);
+            loan.setStartDate(LocalDate.now().minusDays(10));
+            loan.setDueDate(dueDate);
+            loan.setReturnDate(null);
+            loan.setStatus("Atrasado");
+            loan.setFine(null); // Fine es null
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(loan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity returned = loanService.returnTool(loanId, false, false);
+
+            // Then
+            assertThat(returned.getFine()).isEqualTo(5.0); // 5 días * 1.0
+            assertThat(returned.getStatus()).isEqualTo("Atrasado");
+        }
+
+        @Test
+        @DisplayName("returnTool: debe manejar correctamente daño irreparable con fine null")
+        void returnTool_irreparableDamage_nullFine_chargesReplacement() {
+            // Given
+            Long loanId = 108L;
+
+            ClientEntity client = client(1L);
+            ToolEntity tool = tool(1L, "Prestada", 1);
+            tool.setReplacementValue(50000);
+
+            LoanEntity loan = new LoanEntity();
+            loan.setId(loanId);
+            loan.setClient(client);
+            loan.setTool(tool);
+            loan.setStartDate(LocalDate.now().minusDays(3));
+            loan.setDueDate(LocalDate.now().plusDays(4));
+            loan.setReturnDate(null);
+            loan.setStatus("Vigente");
+            loan.setFine(null); // Fine es null
+
+            when(loanRepository.findById(loanId)).thenReturn(Optional.of(loan));
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity returned = loanService.returnTool(loanId, true, true);
+
+            // Then
+            assertThat(returned.getFine()).isEqualTo(50000.0);
+            assertThat(tool.getStatus()).isEqualTo("Dada de baja");
+        }
     }
 
     //metodo getAllLoans para completar la cobertura
@@ -496,6 +649,20 @@ class LoanServiceTest {
         assertThat(result).hasSize(2);
         assertThat(result).isEqualTo(loans);
 
+        verify(loanRepository).findAll();
+    }
+
+    @Test
+    @DisplayName("getAllLoans: debe retornar lista vacía cuando no hay préstamos")
+    void getAllLoans_emptyList() {
+        // Given
+        when(loanRepository.findAll()).thenReturn(List.of());
+
+        // When
+        List<LoanEntity> result = loanService.getAllLoans();
+
+        // Then
+        assertThat(result).isEmpty();
         verify(loanRepository).findAll();
     }
 }
