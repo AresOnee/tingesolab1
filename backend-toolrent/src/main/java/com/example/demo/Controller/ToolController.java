@@ -14,8 +14,8 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/tools")
-
 public class ToolController {
+
     @Autowired
     private ToolService toolService;
 
@@ -35,5 +35,16 @@ public class ToolController {
                 .buildAndExpand(saved.getId())
                 .toUri();
         return ResponseEntity.created(location).body(saved);
+    }
+
+    /**
+     * RF1.2: Dar de baja herramientas dañadas o en desuso (solo Administrador)
+     * PUT /api/v1/tools/{id}/decommission
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{id}/decommission")
+    public ResponseEntity<ToolEntity> decommissionTool(@PathVariable Long id) {
+        ToolEntity decommissioned = toolService.decommission(id);
+        return ResponseEntity.ok(decommissioned);
     }
 }

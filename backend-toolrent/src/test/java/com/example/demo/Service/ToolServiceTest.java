@@ -9,8 +9,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -261,5 +264,100 @@ class ToolServiceTest {
         assertThat(result).hasSize(2);
         assertThat(result).containsExactly(t1, t2);
         verify(toolRepository).findAll();
+    }
+
+    // ===== TESTS PARA RF1.2: DAR DE BAJA HERRAMIENTAS =====
+
+    @Test
+    @DisplayName("decommission OK: cambia estado a 'Dada de baja' y stock a 0")
+    void decommission_ok() {
+        Long toolId = 1L;
+        ToolEntity tool = tool("Taladro", "Disponible", 5);
+        tool.setId(toolId);
+
+        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+        when(toolRepository.save(any(ToolEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        ToolEntity result = toolService.decommission(toolId);
+
+        assertThat(result.getStatus()).isEqualTo("Dada de baja");
+        assertThat(result.getStock()).isEqualTo(0);
+        verify(toolRepository).save(tool);
+    }
+
+    @Test
+    @DisplayName("decommission falla si herramienta no existe")
+    void decommission_notFound() {
+        Long toolId = 999L;
+        when(toolRepository.findById(toolId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> toolService.decommission(toolId))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(rse.getReason()).contains("Herramienta no encontrada");
+                });
+
+        verify(toolRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("decommission falla si herramienta está prestada")
+    void decommission_toolIsLoaned() {
+        Long toolId = 1L;
+        ToolEntity tool = tool("Taladro", "Prestada", 3);
+        tool.setId(toolId);
+
+        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+
+        assertThatThrownBy(() -> toolService.decommission(toolId))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason()).contains("No se puede dar de baja una herramienta que está prestada");
+                });
+
+        verify(toolRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("decommission falla si herramienta ya está dada de baja")
+    void decommission_alreadyDecommissioned() {
+        Long toolId = 1L;
+        ToolEntity tool = tool("Taladro", "Dada de baja", 0);
+        tool.setId(toolId);
+
+        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+
+        assertThatThrownBy(() -> toolService.decommission(toolId))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason()).contains("La herramienta ya está dada de baja");
+                });
+
+        verify(toolRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("decommission OK desde estado 'En reparación'")
+    void decommission_fromRepair() {
+        Long toolId = 1L;
+        ToolEntity tool = tool("Taladro", "En reparación", 2);
+        tool.setId(toolId);
+
+        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+        when(toolRepository.save(any(ToolEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        ToolEntity result = toolService.decommission(toolId);
+
+        assertThat(result.getStatus()).isEqualTo("Dada de baja");
+        assertThat(result.getStock()).isEqualTo(0);
+        verify(toolRepository).save(tool);
     }
 }

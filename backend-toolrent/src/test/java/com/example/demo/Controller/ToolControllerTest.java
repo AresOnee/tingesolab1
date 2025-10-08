@@ -18,8 +18,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = ToolController.class)
@@ -88,5 +87,62 @@ class ToolControllerTest {
         """))
                 .andExpect(status().isBadRequest());
     }
-}
 
+    // ===== TESTS PARA RF1.2: DAR DE BAJA HERRAMIENTAS =====
+
+    @Test
+    @DisplayName("PUT /api/v1/tools/{id}/decommission ⇒ 200 con herramienta dada de baja")
+    void decommission_ok() throws Exception {
+        Long toolId = 1L;
+        ToolEntity decommissioned = new ToolEntity();
+        decommissioned.setId(toolId);
+        decommissioned.setName("Taladro");
+        decommissioned.setCategory("Eléctricas");
+        decommissioned.setStatus("Dada de baja");
+        decommissioned.setStock(0);
+        decommissioned.setReplacementValue(120000);
+
+        when(toolService.decommission(toolId)).thenReturn(decommissioned);
+
+        mvc.perform(put("/api/v1/tools/{id}/decommission", toolId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(toolId))
+                .andExpect(jsonPath("$.status").value("Dada de baja"))
+                .andExpect(jsonPath("$.stock").value(0));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/tools/{id}/decommission ⇒ 404 si herramienta no existe")
+    void decommission_notFound() throws Exception {
+        Long toolId = 999L;
+        when(toolService.decommission(toolId))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Herramienta no encontrada"));
+
+        mvc.perform(put("/api/v1/tools/{id}/decommission", toolId))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/tools/{id}/decommission ⇒ 400 si herramienta está prestada")
+    void decommission_toolIsLoaned() throws Exception {
+        Long toolId = 1L;
+        when(toolService.decommission(toolId))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "No se puede dar de baja una herramienta que está prestada"));
+
+        mvc.perform(put("/api/v1/tools/{id}/decommission", toolId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/tools/{id}/decommission ⇒ 400 si herramienta ya está dada de baja")
+    void decommission_alreadyDecommissioned() throws Exception {
+        Long toolId = 1L;
+        when(toolService.decommission(toolId))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "La herramienta ya está dada de baja"));
+
+        mvc.perform(put("/api/v1/tools/{id}/decommission", toolId))
+                .andExpect(status().isBadRequest());
+    }
+}

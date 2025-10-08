@@ -18,6 +18,7 @@ import java.util.Optional;
 public class ToolService {
 
     @Autowired private ToolRepository toolRepository;
+
     public List<ToolEntity> getAllTools() {
         return toolRepository.findAll();
     }
@@ -40,6 +41,33 @@ public class ToolService {
             body.setStatus("Disponible");
         }
         return toolRepository.save(body);
+    }
+
+    /**
+     * RF1.2: Dar de baja herramientas dañadas o en desuso (solo Administrador)
+     * Cambia el estado de la herramienta a "Dada de baja" y pone stock en 0
+     */
+    public ToolEntity decommission(Long toolId) {
+        ToolEntity tool = toolRepository.findById(toolId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Herramienta no encontrada"));
+
+        // Validar que la herramienta no esté prestada
+        if ("Prestada".equalsIgnoreCase(tool.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No se puede dar de baja una herramienta que está prestada");
+        }
+
+        // Validar que no esté ya dada de baja
+        if ("Dada de baja".equalsIgnoreCase(tool.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "La herramienta ya está dada de baja");
+        }
+
+        // Dar de baja: cambiar estado y poner stock en 0
+        tool.setStatus("Dada de baja");
+        tool.setStock(0);
+
+        return toolRepository.save(tool);
     }
 
 }

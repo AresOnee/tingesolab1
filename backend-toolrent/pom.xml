@@ -78,6 +78,8 @@
         </dependency>
 
 
+
+
         <!-- JUnit 5 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -104,18 +106,12 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Spring Test / MockMvc -->
+
+
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
-            <exclusions>
-                <!-- Usaremos JUnit 5 puro -->
-                <exclusion>
-                    <groupId>org.junit.vintage</groupId>
-                    <artifactId>junit-vintage-engine</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <!-- H2 para @DataJpaTest -->
