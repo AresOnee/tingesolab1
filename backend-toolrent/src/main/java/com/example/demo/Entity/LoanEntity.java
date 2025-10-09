@@ -32,6 +32,9 @@ public class LoanEntity {
     private String status;         // "ACTIVO", "ATRASADO", "CERRADO"
     private Double fine;           // multa por atraso
 
+    // ✅ NUEVO: Costo del arriendo (para mostrar en UI)
+    private Double rentalCost;     // costo del arriendo = días × tarifa
+
     private Boolean damaged;       // devuelta dañada?
     private Boolean irreparable;   // daño irreparable?
 

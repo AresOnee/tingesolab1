@@ -8,6 +8,7 @@ import Home from "./components/Home";
 import ToolsList from "./components/ToolsList";
 import ClientsList from "./components/ClientsList";
 import Loans from "./components/Loans";
+import ConfigManagement from "./components/ConfigManagement";
 import Unauthorized from "./components/Unauthorized";
 
 export default function App() {
@@ -30,6 +31,9 @@ export default function App() {
           }/>
           <Route path="/loans" element={
             <PrivateRoute roles={['USER','ADMIN']}><Loans/></PrivateRoute>
+          }/>
+          <Route path="/config" element={
+            <PrivateRoute roles={['ADMIN']}><ConfigManagement/></PrivateRoute>
           }/>
           <Route path="/unauthorized" element={<Unauthorized />} />
           <Route path="*" element={<Navigate to="/home" replace />} />

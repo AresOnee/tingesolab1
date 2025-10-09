@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +24,33 @@ public class ConfigController {
 
     @Autowired
     private ConfigService configService;
+
+    /**
+     * ✅ MEJORA: Extraer el nombre del usuario desde el token JWT de Keycloak
+     */
+    private String extractUsername(Authentication authentication) {
+        if (authentication instanceof JwtAuthenticationToken) {
+            Jwt jwt = ((JwtAuthenticationToken) authentication).getToken();
+
+            // Intentar obtener "preferred_username" (típico de Keycloak)
+            String preferredUsername = jwt.getClaimAsString("preferred_username");
+            if (preferredUsername != null && !preferredUsername.isEmpty()) {
+                return preferredUsername;
+            }
+
+            // Si no existe, intentar "name"
+            String name = jwt.getClaimAsString("name");
+            if (name != null && !name.isEmpty()) {
+                return name;
+            }
+
+            // Si no existe, usar "sub" (subject - UUID)
+            return jwt.getClaimAsString("sub");
+        }
+
+        // Fallback: usar getName() del authentication
+        return authentication.getName();
+    }
 
     /**
      * RF4.1 y RF4.2: Obtener todas las configuraciones
@@ -80,7 +109,7 @@ public class ConfigController {
             Authentication authentication
     ) {
         Double newValue = body.get("value");
-        String username = authentication.getName();
+        String username = extractUsername(authentication); // Extraer nombre real
 
         ConfigEntity updated = configService.updateConfigById(id, newValue, username);
         return ResponseEntity.ok(updated);
@@ -98,7 +127,7 @@ public class ConfigController {
             Authentication authentication
     ) {
         Double newValue = body.get("value");
-        String username = authentication.getName();
+        String username = extractUsername(authentication); // Extraer nombre real
 
         ConfigEntity updated = configService.setTarifaArriendoDiaria(newValue, username);
         return ResponseEntity.ok(updated);
@@ -116,7 +145,7 @@ public class ConfigController {
             Authentication authentication
     ) {
         Double newValue = body.get("value");
-        String username = authentication.getName();
+        String username = extractUsername(authentication); // Extraer nombre real
 
         ConfigEntity updated = configService.setTarifaMultaDiaria(newValue, username);
         return ResponseEntity.ok(updated);

@@ -3,9 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useKeycloak } from '@react-keycloak/web'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
-import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
-import Grid from '@mui/material/Grid2'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -87,7 +85,7 @@ export default function ConfigManagement() {
 
       await configService.updateById(config.id, newValue)
 
-      setSuccessMsg(`Configuración "${config.configKey}" actualizada exitosamente`)
+      setSuccessMsg(`Configuración "${getConfigLabel(config.configKey)}" actualizada exitosamente`)
       setEditingId(null)
       setEditValue('')
       await loadConfigs()
@@ -209,7 +207,7 @@ export default function ConfigManagement() {
                 {isAdmin && (
                   <TableCell align="center">
                     {editingId === config.id ? (
-                      <>
+                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                         <Tooltip title="Guardar">
                           <IconButton
                             color="primary"
@@ -230,7 +228,7 @@ export default function ConfigManagement() {
                             <CancelIcon />
                           </IconButton>
                         </Tooltip>
-                      </>
+                      </Box>
                     ) : (
                       <Tooltip title="Editar">
                         <IconButton
@@ -263,7 +261,7 @@ export default function ConfigManagement() {
         <Typography variant="body2" color="text.secondary">
           <strong>Nota:</strong> Las tarifas se expresan en valores diarios.
         </Typography>
-        <ul style={{ marginTop: 8 }}>
+        <Box component="ul" sx={{ mt: 1, pl: 2 }}>
           <li>
             <Typography variant="body2" color="text.secondary">
               La tarifa de arriendo se cobra por cada día que la herramienta está prestada.
@@ -274,7 +272,7 @@ export default function ConfigManagement() {
               La tarifa de multa se aplica por cada día de atraso en la devolución.
             </Typography>
           </li>
-        </ul>
+        </Box>
       </Box>
     </Box>
   )

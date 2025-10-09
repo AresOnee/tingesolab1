@@ -7,6 +7,7 @@ import api from "../http-common";
  * - Muestra "ID - Nombre" para Cliente y Herramienta aunque el backend solo entregue clientId/toolId.
  * - Crea préstamos con form-urlencoded.
  * - Devuelve préstamos con banderas de daño / irreparable.
+ * - MEJORA: Muestra costo del arriendo
  */
 export default function Loans() {
   // catálogos
@@ -36,6 +37,16 @@ export default function Loans() {
 
   const toolLabel = (id) =>
     id ? `${id} - ${toolsMap.get(Number(id))?.name ?? "N/A"}` : "—";
+
+  // Formatear moneda chilena
+  const formatCurrency = (value) => {
+    if (value == null || value === 0) return "$0";
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      minimumFractionDigits: 0,
+    }).format(value);
+  };
 
   useEffect(() => {
     fetchAll();
@@ -214,6 +225,7 @@ export default function Loans() {
               <Th>F. Préstamo</Th>
               <Th>F. Límite</Th>
               <Th>F. Devolución</Th>
+              <Th>Costo Arriendo</Th>{/* NUEVA COLUMNA */}
               <Th>Multa</Th>
               <Th>Dañado</Th>
               <Th>Irreparable</Th>
@@ -224,7 +236,7 @@ export default function Loans() {
           <tbody>
             {loans.length === 0 ? (
               <tr>
-                <Td colSpan={11} style={{ textAlign: "center" }}>
+                <Td colSpan={12} style={{ textAlign: "center" }}>
                   {loading ? "Cargando…" : "No hay préstamos."}
                 </Td>
               </tr>
@@ -242,7 +254,11 @@ export default function Loans() {
                     <Td>{loan.startDate ?? ""}</Td>
                     <Td>{loan.dueDate ?? ""}</Td>
                     <Td>{loan.returnDate ?? ""}</Td>
-                    <Td>{loan.fine ?? 0}</Td>
+                    {/* NUEVA CELDA: Costo Arriendo */}
+                    <Td style={{ fontWeight: 600, color: '#2563eb' }}>
+                      {formatCurrency(loan.rentalCost)}
+                    </Td>
+                    <Td>{formatCurrency(loan.fine)}</Td>
                     <Td>
                       {loan.damaged === true
                         ? "Sí"
@@ -318,6 +334,7 @@ const Td = ({ children, ...props }) => (
       borderBottom: "1px solid #f3f4f6",
       whiteSpace: "nowrap",
       color: "#111827",
+      ...props.style,
     }}
   >
     {children}

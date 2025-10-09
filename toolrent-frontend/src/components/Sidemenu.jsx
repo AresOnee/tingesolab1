@@ -13,6 +13,7 @@ const menu = [
   { text: 'Herramientas', path: '/tools' },
   { text: 'Clientes', path: '/clients' },
   { text: 'Préstamos', path: '/loans' },
+  { text: 'Configuración', path: '/config' },
 ]
 
 export default function Sidemenu() {

@@ -38,7 +38,7 @@ class LoanControllerTest {
     private LoanService loanService;
 
     @Test
-    @DisplayName("POST /api/v1/loans/create ⇒ 201 y JSON")
+    @DisplayName("POST /api/v1/loans/create ⇒ 201 y JSON con rentalCost")
     void create_ok() throws Exception {
         LoanEntity saved = new LoanEntity();
         saved.setId(123L);
@@ -54,22 +54,104 @@ class LoanControllerTest {
         saved.setTool(tool);
 
         saved.setStartDate(LocalDate.now());
-        saved.setDueDate(LocalDate.of(2025,10,10));
+        saved.setDueDate(LocalDate.of(2025,10,17)); // 9 días desde hoy (2025-10-08)
         saved.setStatus("Vigente");
         saved.setFine(0d);
         saved.setDamaged(false);
         saved.setIrreparable(false);
+        saved.setRentalCost(35000.0);  // ✨ NUEVO: Costo del arriendo
 
         when(loanService.createLoan(any(Long.class), any(Long.class), any(LocalDate.class))).thenReturn(saved);
 
         mvc.perform(post(CREATE_ENDPOINT)
                         .param("clientId", "10")
                         .param("toolId", "20")
-                        .param("dueDate", "2025-10-10"))
+                        .param("dueDate", "2025-10-17"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(123))
-                .andExpect(jsonPath("$.status").value("Vigente"));
+                .andExpect(jsonPath("$.status").value("Vigente"))
+                .andExpect(jsonPath("$.rentalCost").value(35000.0));  // ✨ NUEVO
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/loans/create ⇒ JSON debe incluir rentalCost calculado")
+    void create_withRentalCost() throws Exception {
+        // Given: Préstamo con diferentes costos de arriendo
+        LoanEntity saved = new LoanEntity();
+        saved.setId(124L);
+        saved.setClient(new ClientEntity(10L, "Juan","12.345.678-9","+569...","juan@toolrent.cl","Activo"));
+
+        ToolEntity tool = new ToolEntity();
+        tool.setId(20L);
+        tool.setName("Taladro");
+        tool.setStock(3);
+        tool.setStatus("Disponible");
+        tool.setCategory("Eléctricas");
+        tool.setReplacementValue(50000);
+        saved.setTool(tool);
+
+        saved.setStartDate(LocalDate.now());
+        saved.setDueDate(LocalDate.now().plusDays(7));
+        saved.setStatus("Vigente");
+        saved.setFine(0d);
+        saved.setDamaged(false);
+        saved.setIrreparable(false);
+        saved.setRentalCost(70000.0);  // 7 días * $10,000
+
+        when(loanService.createLoan(any(Long.class), any(Long.class), any(LocalDate.class)))
+                .thenReturn(saved);
+
+        // When & Then: Verificar que rentalCost está en el response
+        mvc.perform(post(CREATE_ENDPOINT)
+                        .param("clientId", "10")
+                        .param("toolId", "20")
+                        .param("dueDate", LocalDate.now().plusDays(7).toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(124))
+                .andExpect(jsonPath("$.status").value("Vigente"))
+                .andExpect(jsonPath("$.rentalCost").exists())
+                .andExpect(jsonPath("$.rentalCost").isNumber())
+                .andExpect(jsonPath("$.rentalCost").value(70000.0));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/loans/create ⇒ rentalCost debe ser 0 para arriendo del mismo día")
+    void create_sameDayRental_zeroRentalCost() throws Exception {
+        // Given: Préstamo que vence el mismo día
+        LoanEntity saved = new LoanEntity();
+        saved.setId(125L);
+        saved.setClient(new ClientEntity(10L, "Juan","12.345.678-9","+569...","juan@toolrent.cl","Activo"));
+
+        ToolEntity tool = new ToolEntity();
+        tool.setId(20L);
+        tool.setName("Taladro");
+        tool.setStock(3);
+        tool.setStatus("Disponible");
+        tool.setCategory("Eléctricas");
+        tool.setReplacementValue(50000);
+        saved.setTool(tool);
+
+        LocalDate today = LocalDate.now();
+        saved.setStartDate(today);
+        saved.setDueDate(today);  // Mismo día
+        saved.setStatus("Vigente");
+        saved.setFine(0d);
+        saved.setDamaged(false);
+        saved.setIrreparable(false);
+        saved.setRentalCost(0.0);  // Sin costo por ser mismo día
+
+        when(loanService.createLoan(any(Long.class), any(Long.class), any(LocalDate.class)))
+                .thenReturn(saved);
+
+        // When & Then: Verificar que rentalCost es 0
+        mvc.perform(post(CREATE_ENDPOINT)
+                        .param("clientId", "10")
+                        .param("toolId", "20")
+                        .param("dueDate", today.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentalCost").value(0.0));
     }
 
     @Test
@@ -242,7 +324,7 @@ class LoanControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/loans/ ⇒ 200 y lista de préstamos")
+    @DisplayName("GET /api/v1/loans/ ⇒ 200 y lista de préstamos con rentalCost")
     void getAllLoans_ok() throws Exception {
         ClientEntity client = new ClientEntity(10L, "Juan","12.345.678-9","+569...","juan@toolrent.cl","Activo");
 
@@ -270,6 +352,7 @@ class LoanControllerTest {
         loan1.setDueDate(LocalDate.now().plusDays(5));
         loan1.setStatus("Vigente");
         loan1.setFine(0d);
+        loan1.setRentalCost(35000.0);  // ✨ NUEVO
 
         LoanEntity loan2 = new LoanEntity();
         loan2.setId(101L);
@@ -279,6 +362,7 @@ class LoanControllerTest {
         loan2.setDueDate(LocalDate.now().plusDays(3));
         loan2.setStatus("Vigente");
         loan2.setFine(0d);
+        loan2.setRentalCost(20000.0);  // ✨ NUEVO
 
         when(loanService.getAllLoans()).thenReturn(List.of(loan1, loan2));
 
@@ -288,8 +372,10 @@ class LoanControllerTest {
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$[0].id").value(100))
                 .andExpect(jsonPath("$[0].status").value("Vigente"))
+                .andExpect(jsonPath("$[0].rentalCost").value(35000.0))  // ✨ NUEVO
                 .andExpect(jsonPath("$[1].id").value(101))
-                .andExpect(jsonPath("$[1].status").value("Vigente"));
+                .andExpect(jsonPath("$[1].status").value("Vigente"))
+                .andExpect(jsonPath("$[1].rentalCost").value(20000.0));  // ✨ NUEVO
     }
 
     @Test

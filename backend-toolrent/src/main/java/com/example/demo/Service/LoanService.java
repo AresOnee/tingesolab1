@@ -23,6 +23,7 @@ public class LoanService {
     @Autowired private LoanRepository loanRepository;
     @Autowired private ClientRepository clientRepository;
     @Autowired private ToolRepository toolRepository;
+    @Autowired private ConfigService configService;
 
     /**
      * Crea un préstamo aplicando reglas de negocio.
@@ -90,13 +91,16 @@ public class LoanService {
         }
 
         // 2.4) Sin stock
-        // 2.4) Sin stock
-        int stockActual = tool.getStock();      // ← int no puede ser null
+        int stockActual = tool.getStock();
         if (stockActual <= 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Herramienta sin stock");
         }
 
-
+        // Calcular costo del arriendo
+        long diasArriendo = ChronoUnit.DAYS.between(today, dueDate);
+        if (diasArriendo < 1) diasArriendo = 1; // Mínimo 1 día
+        double tarifaArriendo = configService.getTarifaArriendoDiaria();
+        double costoArriendo = diasArriendo * tarifaArriendo;
 
         // 3) Crear préstamo (usando asociaciones) y descontar stock
         LoanEntity loan = new LoanEntity();
@@ -105,8 +109,9 @@ public class LoanService {
         loan.setStartDate(today);
         loan.setDueDate(dueDate);
         loan.setReturnDate(null);
-        loan.setStatus("Vigente"); // o "ACTIVO" si así lo manejas
+        loan.setStatus("Vigente"); // o ACTIVO
         loan.setFine(0d);
+        loan.setRentalCost(costoArriendo); // Guardar costo del arriendo
         loan.setDamaged(false);
         loan.setIrreparable(false);
 
@@ -134,8 +139,8 @@ public class LoanService {
         loan.setReturnDate(today);
 
         long daysLate = Math.max(0, ChronoUnit.DAYS.between(loan.getDueDate(), today));
-        // La tarifa diaria de multa se parametriza más adelante; por ahora usar 1.0 como placeholder
-        double fineDaily = 1.0;
+        // Obtener tarifa de multa desde ConfigService
+        double fineDaily = configService.getTarifaMultaDiaria();
         if (daysLate > 0) {
             loan.setFine((loan.getFine() == null ? 0.0 : loan.getFine()) + daysLate * fineDaily);
             loan.setStatus("Atrasado");
