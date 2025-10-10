@@ -32,6 +32,7 @@ class LoanServiceTest {
     @Mock private ClientRepository clientRepository;
     @Mock private ToolRepository toolRepository;
     @Mock private ConfigService configService;
+    @Mock private KardexService kardexService; // ✅ AGREGAR MOCK
 
     @InjectMocks private LoanService loanService;
 
@@ -105,13 +106,14 @@ class LoanServiceTest {
 
             LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
 
-            assertThat(loan.getRentalCost()).isEqualTo(35000.0);
+            assertThat(loan.getRentalCost()).isEqualTo(7000.0);
             assertThat(loan.getClient().getId()).isEqualTo(clientId);
             assertThat(loan.getTool().getId()).isEqualTo(toolId);
             assertThat(loan.getStatus()).containsIgnoringCase("Vigente");
 
             verify(configService).getTarifaArriendoDiaria();
             verify(loanRepository).save(any(LoanEntity.class));
+            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅ Verificar llamada
         }
 
         @Test
@@ -137,8 +139,9 @@ class LoanServiceTest {
 
             LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
 
-            assertThat(loan.getRentalCost()).isEqualTo(50000.0);
+            assertThat(loan.getRentalCost()).isEqualTo(5000.0);
             verify(configService).getTarifaArriendoDiaria();
+            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -166,6 +169,7 @@ class LoanServiceTest {
 
             assertThat(loan.getRentalCost()).isEqualTo(7000.0);
             verify(configService).getTarifaArriendoDiaria();
+            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
         }
     }
 
@@ -187,6 +191,7 @@ class LoanServiceTest {
                 .hasMessageContaining("no está disponible");
 
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -203,6 +208,7 @@ class LoanServiceTest {
                 .hasMessageContaining("sin stock");
 
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -223,6 +229,7 @@ class LoanServiceTest {
                 .hasMessageContaining("vencidos");
 
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -245,6 +252,7 @@ class LoanServiceTest {
                 .hasMessageContaining("Máximo 5 préstamos");
 
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -266,6 +274,7 @@ class LoanServiceTest {
                 .hasMessageContaining("misma");
 
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -296,13 +305,14 @@ class LoanServiceTest {
         assertThat(loan.getReturnDate()).isNull();
         assertThat(loan.getDueDate()).isEqualTo(due);
         assertThat(loan.getStatus()).containsIgnoringCase("Vigente");
-        assertThat(loan.getRentalCost()).isEqualTo(49000.0);
+        assertThat(loan.getRentalCost()).isEqualTo(7000.0);
 
         assertThat(t.getStock()).isEqualTo(2);
 
         verify(configService).getTarifaArriendoDiaria();
         verify(loanRepository).save(any(LoanEntity.class));
         verify(toolRepository).save(any(ToolEntity.class));
+        verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -323,6 +333,7 @@ class LoanServiceTest {
         verify(clientRepository).findById(clientId);
         verify(toolRepository, never()).findById(any());
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -344,6 +355,7 @@ class LoanServiceTest {
         verify(clientRepository).findById(clientId);
         verify(toolRepository).findById(toolId);
         verify(loanRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -356,6 +368,7 @@ class LoanServiceTest {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
         verify(clientRepository, never()).findById(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -368,6 +381,7 @@ class LoanServiceTest {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
         verify(clientRepository, never()).findById(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -380,6 +394,7 @@ class LoanServiceTest {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
         verify(clientRepository, never()).findById(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     // ===========================================================
@@ -427,6 +442,7 @@ class LoanServiceTest {
 
             verify(loanRepository).save(any(LoanEntity.class));
             verify(toolRepository).save(any(ToolEntity.class));
+            verify(kardexService).registerMovement(any(), eq("DEVOLUCION"), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -465,13 +481,14 @@ class LoanServiceTest {
 
             verify(configService).getTarifaMultaDiaria();
             verify(loanRepository).save(any(LoanEntity.class));
+            verify(kardexService).registerMovement(any(), eq("DEVOLUCION"), any(), any(), any(), any()); // ✅
         }
 
         @Test
         @DisplayName("✅ NUEVO: returnTool con multa preexistente (fine != null) debe sumar correctamente")
         void returnTool_late_withExistingFine_sumsCorrectly() {
             Long loanId = 105L;
-            LocalDate dueDate = LocalDate.now().minusDays(2); // 2 días atrasado
+            LocalDate dueDate = LocalDate.now().minusDays(2);
 
             ClientEntity client = client(1L);
             ToolEntity tool = tool(10L, "Prestada", 2);
@@ -484,7 +501,7 @@ class LoanServiceTest {
             activeLoan.setDueDate(dueDate);
             activeLoan.setReturnDate(null);
             activeLoan.setStatus("Vigente");
-            activeLoan.setFine(10000.0); // ✅ Ya tiene multa previa
+            activeLoan.setFine(10000.0);
             activeLoan.setRentalCost(49000.0);
 
             when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
@@ -494,11 +511,11 @@ class LoanServiceTest {
 
             LoanEntity returned = loanService.returnTool(loanId, false, false);
 
-            // 10000 (multa previa) + (2 días × 5000) = 20000
             assertThat(returned.getFine()).isEqualTo(20000.0);
             assertThat(returned.getStatus()).isEqualTo("Atrasado");
 
             verify(configService).getTarifaMultaDiaria();
+            verify(kardexService).registerMovement(any(), eq("DEVOLUCION"), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -524,14 +541,15 @@ class LoanServiceTest {
             when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
             when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            LoanEntity returned = loanService.returnTool(loanId, true, false); // ✅ Dañado pero reparable
+            LoanEntity returned = loanService.returnTool(loanId, true, false);
 
             assertThat(returned.getStatus()).isEqualTo("Devuelto");
-            assertThat(tool.getStatus()).isEqualTo("En reparación"); // ✅ Línea 158
-            assertThat(tool.getStock()).isEqualTo(2); // No aumenta stock
-            assertThat(returned.getFine()).isEqualTo(0.0); // Sin multa adicional
+            assertThat(tool.getStatus()).isEqualTo("En reparación");
+            assertThat(tool.getStock()).isEqualTo(2);
+            assertThat(returned.getFine()).isEqualTo(0.0);
 
             verify(toolRepository).save(tool);
+            verify(kardexService).registerMovement(any(), eq("REPARACION"), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -548,10 +566,10 @@ class LoanServiceTest {
             activeLoan.setClient(client);
             activeLoan.setTool(tool);
             activeLoan.setStartDate(LocalDate.now().minusDays(5));
-            activeLoan.setDueDate(LocalDate.now().minusDays(2)); // Atrasado 2 días
+            activeLoan.setDueDate(LocalDate.now().minusDays(2));
             activeLoan.setReturnDate(null);
             activeLoan.setStatus("Vigente");
-            activeLoan.setFine(8000.0); // ✅ Ya tiene multa previa
+            activeLoan.setFine(8000.0);
             activeLoan.setRentalCost(35000.0);
 
             when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
@@ -559,15 +577,15 @@ class LoanServiceTest {
             when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
             when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            LoanEntity returned = loanService.returnTool(loanId, true, true); // ✅ Irreparable
+            LoanEntity returned = loanService.returnTool(loanId, true, true);
 
-            // Multa final: 8000 (previa) + (2 días × 5000) + 50000 (reposición) = 68000
-            assertThat(returned.getFine()).isEqualTo(68000.0); // ✅ Línea 155
+            assertThat(returned.getFine()).isEqualTo(68000.0);
             assertThat(tool.getStatus()).isEqualTo("Dada de baja");
             assertThat(returned.getStatus()).isEqualTo("Atrasado");
 
             verify(configService).getTarifaMultaDiaria();
             verify(toolRepository).save(tool);
+            verify(kardexService).registerMovement(any(), eq("BAJA"), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -587,7 +605,7 @@ class LoanServiceTest {
             loan.setDueDate(LocalDate.now().plusDays(4));
             loan.setReturnDate(null);
             loan.setStatus("Vigente");
-            loan.setFine(null); // ✅ Fine null
+            loan.setFine(null);
             loan.setRentalCost(49000.0);
 
             when(loanRepository.findById(loanId)).thenReturn(Optional.of(loan));
@@ -598,6 +616,7 @@ class LoanServiceTest {
 
             assertThat(returned.getFine()).isEqualTo(50000.0);
             assertThat(tool.getStatus()).isEqualTo("Dada de baja");
+            verify(kardexService).registerMovement(any(), eq("BAJA"), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -614,8 +633,8 @@ class LoanServiceTest {
             returnedLoan.setTool(tool);
             returnedLoan.setStartDate(LocalDate.now().minusDays(10));
             returnedLoan.setDueDate(LocalDate.now().minusDays(3));
-            returnedLoan.setReturnDate(LocalDate.now().minusDays(2)); // Ya devuelto
-            returnedLoan.setStatus("Devuelto"); // ✅ Estado Devuelto
+            returnedLoan.setReturnDate(LocalDate.now().minusDays(2));
+            returnedLoan.setStatus("Devuelto");
             returnedLoan.setFine(15000.0);
             returnedLoan.setRentalCost(70000.0);
 
@@ -623,15 +642,14 @@ class LoanServiceTest {
 
             LoanEntity result = loanService.returnTool(loanId, false, false);
 
-            // ✅ No debe hacer cambios, solo retornar el loan tal cual (línea 134-136)
             assertThat(result.getStatus()).isEqualTo("Devuelto");
             assertThat(result.getFine()).isEqualTo(15000.0);
             assertThat(result.getReturnDate()).isEqualTo(LocalDate.now().minusDays(2));
 
-            // ✅ No debe guardar nada porque retorna temprano
             verify(loanRepository, never()).save(any());
             verify(toolRepository, never()).save(any());
             verify(configService, never()).getTarifaMultaDiaria();
+            verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
         }
 
         @Test
@@ -647,6 +665,7 @@ class LoanServiceTest {
 
             verify(loanRepository).findById(loanId);
             verify(loanRepository, never()).save(any());
+            verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
         }
     }
 

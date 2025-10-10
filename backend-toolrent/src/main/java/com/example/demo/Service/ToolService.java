@@ -3,7 +3,6 @@ package com.example.demo.Service;
 import com.example.demo.Entity.ToolEntity;
 import com.example.demo.Repository.ToolRepository;
 import jakarta.transaction.Transactional;
-import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -18,6 +17,7 @@ import java.util.Optional;
 public class ToolService {
 
     @Autowired private ToolRepository toolRepository;
+    @Autowired private KardexService kardexService; // ✅ NUEVA DEPENDENCIA
 
     public List<ToolEntity> getAllTools() {
         return toolRepository.findAll();
@@ -30,22 +30,40 @@ public class ToolService {
         return toolRepository.save(tool);
     }
 
+    /**
+     * RF1.1: Registrar nuevas herramientas
+     * RF5.1: Registrar automáticamente en kardex
+     */
     public ToolEntity create(ToolEntity body) {
         String name = Optional.ofNullable(body.getName()).orElse("").trim();
         if (name.isBlank()) throw new IllegalArgumentException("El nombre es obligatorio");
         if (toolRepository.existsByNameIgnoreCase(name)) {
-            throw new DataIntegrityViolationException("uq_tools_name"); // dispara el 409 del handler
+            throw new DataIntegrityViolationException("uq_tools_name");
         }
         body.setName(name);
         if (body.getStatus() == null || body.getStatus().isBlank()) {
             body.setStatus("Disponible");
         }
-        return toolRepository.save(body);
+
+        // Guardar herramienta
+        ToolEntity saved = toolRepository.save(body);
+
+        // ✅ RF5.1: Registrar movimiento en kardex
+        kardexService.registerMovement(
+                saved.getId(),
+                "REGISTRO",
+                saved.getStock(),
+                "ADMIN",
+                "Alta de herramienta: " + saved.getName(),
+                null
+        );
+
+        return saved;
     }
 
     /**
      * RF1.2: Dar de baja herramientas dañadas o en desuso (solo Administrador)
-     * Cambia el estado de la herramienta a "Dada de baja" y pone stock en 0
+     * RF5.1: Registrar automáticamente en kardex
      */
     public ToolEntity decommission(Long toolId) {
         ToolEntity tool = toolRepository.findById(toolId)
@@ -63,11 +81,24 @@ public class ToolService {
                     "La herramienta ya está dada de baja");
         }
 
+        // Guardar stock anterior para el kardex
+        int stockAnterior = tool.getStock();
+
         // Dar de baja: cambiar estado y poner stock en 0
         tool.setStatus("Dada de baja");
         tool.setStock(0);
+        ToolEntity saved = toolRepository.save(tool);
 
-        return toolRepository.save(tool);
+        // ✅ RF5.1: Registrar baja en kardex
+        kardexService.registerMovement(
+                saved.getId(),
+                "BAJA",
+                -stockAnterior, // negativo porque se reduce
+                "ADMIN",
+                "Baja de herramienta: " + saved.getName(),
+                null
+        );
+
+        return saved;
     }
-
 }

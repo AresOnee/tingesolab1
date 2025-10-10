@@ -16,7 +16,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     onTokens={({ token }) => {
       // deja el token disponible para axios/interceptores
       localStorage.setItem("kc_token", token);
-      window.keycloak = keycloak; // opcional, por si lo usas en otros sitios
+      window.keycloak = keycloak;
     }}
   >
     <React.StrictMode>

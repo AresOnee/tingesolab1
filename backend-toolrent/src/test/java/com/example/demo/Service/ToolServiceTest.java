@@ -23,6 +23,7 @@ import static org.mockito.Mockito.*;
 class ToolServiceTest {
 
     @Mock private ToolRepository toolRepository;
+    @Mock private KardexService kardexService; // ✅ AGREGAR MOCK
     @InjectMocks private ToolService toolService;
 
     private ToolEntity tool(String name, String status, Integer stock) {
@@ -78,6 +79,7 @@ class ToolServiceTest {
         assertThat(saved.getName()).isEqualTo("Taladro");
         assertThat(saved.getStatus()).isEqualTo("Disponible");
         verify(toolRepository).save(any(ToolEntity.class));
+        verify(kardexService).registerMovement(any(), eq("REGISTRO"), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -90,6 +92,7 @@ class ToolServiceTest {
                 .hasMessageContaining("nombre es obligatorio");
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -102,6 +105,7 @@ class ToolServiceTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     // ========== NUEVOS TESTS PARA CUBRIR BRANCHES FALTANTES ==========
@@ -142,7 +146,11 @@ class ToolServiceTest {
         // Given
         ToolEntity tool = tool("Sierra", "  ", 3);
         when(toolRepository.existsByNameIgnoreCase("Sierra")).thenReturn(false);
-        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> {
+            ToolEntity t = inv.getArgument(0);
+            t.setId(10L);
+            return t;
+        });
 
         // When
         ToolEntity saved = toolService.create(tool);
@@ -150,6 +158,7 @@ class ToolServiceTest {
         // Then
         assertThat(saved.getStatus()).isEqualTo("Disponible");
         verify(toolRepository).save(tool);
+        verify(kardexService).registerMovement(any(), eq("REGISTRO"), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -158,7 +167,11 @@ class ToolServiceTest {
         // Given
         ToolEntity tool = tool("Martillo", "Prestada", 1);
         when(toolRepository.existsByNameIgnoreCase("Martillo")).thenReturn(false);
-        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> {
+            ToolEntity t = inv.getArgument(0);
+            t.setId(10L);
+            return t;
+        });
 
         // When
         ToolEntity saved = toolService.create(tool);
@@ -166,6 +179,7 @@ class ToolServiceTest {
         // Then
         assertThat(saved.getStatus()).isEqualTo("Prestada");
         verify(toolRepository).save(tool);
+        verify(kardexService).registerMovement(any(), eq("REGISTRO"), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -174,7 +188,11 @@ class ToolServiceTest {
         // Given
         ToolEntity tool = tool("  Taladro  ", "Disponible", 2);
         when(toolRepository.existsByNameIgnoreCase("Taladro")).thenReturn(false);
-        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> {
+            ToolEntity t = inv.getArgument(0);
+            t.setId(10L);
+            return t;
+        });
 
         // When
         ToolEntity saved = toolService.create(tool);
@@ -182,6 +200,7 @@ class ToolServiceTest {
         // Then
         verify(toolRepository).existsByNameIgnoreCase("Taladro");
         verify(toolRepository).save(any(ToolEntity.class));
+        verify(kardexService).registerMovement(any(), eq("REGISTRO"), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -196,6 +215,7 @@ class ToolServiceTest {
                 .hasMessageContaining("El nombre es obligatorio");
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -211,6 +231,7 @@ class ToolServiceTest {
                 .hasMessageContaining("uq_tools_name");
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -233,6 +254,7 @@ class ToolServiceTest {
         assertThat(saved.getName()).isEqualTo("Sierra Circular");
         verify(toolRepository).existsByNameIgnoreCase("Sierra Circular");
         verify(toolRepository).save(any(ToolEntity.class));
+        verify(kardexService).registerMovement(any(), eq("REGISTRO"), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -284,6 +306,7 @@ class ToolServiceTest {
         assertThat(result.getStatus()).isEqualTo("Dada de baja");
         assertThat(result.getStock()).isEqualTo(0);
         verify(toolRepository).save(tool);
+        verify(kardexService).registerMovement(any(), eq("BAJA"), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -301,6 +324,7 @@ class ToolServiceTest {
                 });
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -321,6 +345,7 @@ class ToolServiceTest {
                 });
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -341,6 +366,7 @@ class ToolServiceTest {
                 });
 
         verify(toolRepository, never()).save(any());
+        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
     }
 
     @Test
@@ -359,5 +385,6 @@ class ToolServiceTest {
         assertThat(result.getStatus()).isEqualTo("Dada de baja");
         assertThat(result.getStock()).isEqualTo(0);
         verify(toolRepository).save(tool);
+        verify(kardexService).registerMovement(any(), eq("BAJA"), any(), any(), any(), any()); // ✅
     }
 }
