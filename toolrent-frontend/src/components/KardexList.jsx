@@ -60,6 +60,26 @@ const getMovementColor = (type) => {
   }
 }
 
+const getToolLabel = (movement) => {
+  const tool = movement.tool || {}
+  const toolId = tool.id ?? movement.toolId
+  const toolName = tool.name ?? movement.toolName
+
+  if (toolId && toolName) {
+    return `#${toolId} - ${toolName}`
+  }
+
+  if (toolId) {
+    return `#${toolId}`
+  }
+
+  if (toolName) {
+    return toolName
+  }
+
+  return '-'
+}
+
 export default function KardexList() {
   const { keycloak, initialized } = useKeycloak()
   const [movements, setMovements] = useState([])
@@ -111,12 +131,21 @@ export default function KardexList() {
       filtered = filtered.filter((m) => m.movementType === filterType)
     }
 
-    // Filtrar por ID de herramienta
+    // Filtrar por ID o nombre de herramienta
     if (toolId) {
-      filtered = filtered.filter((m) => 
-        m.toolId?.toString().includes(toolId) || 
-        m.toolName?.toLowerCase().includes(toolId.toLowerCase())
-      )
+      const searchTerm = toolId.toLowerCase()
+      filtered = filtered.filter((m) => {
+        const tool = m.tool || {}
+        const toolIdentifier = tool.id ?? m.toolId
+        const toolName = tool.name ?? m.toolName
+
+        const idMatches =
+          toolIdentifier != null && toolIdentifier.toString().includes(toolId)
+        const nameMatches =
+          typeof toolName === 'string' && toolName.toLowerCase().includes(searchTerm)
+
+        return idMatches || nameMatches
+      })
     }
 
     // Filtrar por rango de fechas
@@ -288,11 +317,9 @@ export default function KardexList() {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
-                    {movement.toolName || `ID: ${movement.toolId}`}
-                  </TableCell>
+                  <TableCell>{getToolLabel(movement)}</TableCell>
                   <TableCell>{movement.quantity}</TableCell>
-                  <TableCell>{movement.userId || '-'}</TableCell>
+                  <TableCell>{movement.username || '-'}</TableCell>
                   <TableCell>{formatDate(movement.movementDate)}</TableCell>
                   <TableCell>{movement.observations || '-'}</TableCell>
                 </TableRow>

@@ -6,6 +6,7 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import TextField from '@mui/material/TextField'
+import MenuItem from '@mui/material/MenuItem'
 import Grid from '@mui/material/Grid2'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -28,9 +29,18 @@ import toolService from '../services/tool.service'
 const emptyForm = {
   name: '',
   category: '',
+  status: 'Disponible',
   replacementValue: '',
   stock: '',
 }
+
+const STATUS_OPTIONS = [
+  'Disponible',
+  'Prestada',
+  'En uso',
+  'En reparación',
+  'Dada de baja',
+]
 
 export default function ToolsList() {
   const { keycloak, initialized } = useKeycloak()
@@ -75,6 +85,7 @@ export default function ToolsList() {
   const colorFor = (status = '') => {
     const s = status.toLowerCase()
     if (s.includes('disponible')) return 'success'
+    if (s.includes('uso')) return 'warning'
     if (s.includes('prestada')) return 'warning'
     if (s.includes('reparación')) return 'info'
     if (s.includes('baja')) return 'error'
@@ -90,11 +101,12 @@ export default function ToolsList() {
       await toolService.create({
         name: form.name,
         category: form.category,
+        status: form.status,
         replacementValue: Number(form.replacementValue || 0),
         stock: Number(form.stock || 0),
       })
-      
-      setForm(emptyForm)
+
+      setForm({ ...emptyForm })
       setSuccessMsg('Herramienta creada exitosamente')
       await loadTools()
     } catch (e) {
@@ -185,6 +197,23 @@ export default function ToolsList() {
               fullWidth
               size="small"
             />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 2 }}>
+            <TextField
+              select
+              label="Estado"
+              name="status"
+              value={form.status}
+              onChange={onChange}
+              fullWidth
+              size="small"
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
             <TextField
