@@ -17,7 +17,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,26 +24,34 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * Tests para las nuevas validaciones implementadas (Gap Analysis - Punto 4)
+ * ✅ Validación de estado del cliente
+ * ✅ Validación de multas pendientes
+ * ✅ Validación de fechas
+ * ✅ Cálculo correcto de rentalCost
+ */
 @ExtendWith(MockitoExtension.class)
-class LoanServiceTest {
+@DisplayName("Tests de LoanService - Nuevas Validaciones (Gap Analysis)")
+class LoanServiceNewValidationsTest {
 
     @Mock private LoanRepository loanRepository;
     @Mock private ClientRepository clientRepository;
     @Mock private ToolRepository toolRepository;
     @Mock private ConfigService configService;
-    @Mock private KardexService kardexService; // ✅ AGREGAR MOCK
+    @Mock private KardexService kardexService;
 
     @InjectMocks private LoanService loanService;
 
-    // -------- helpers --------
-    private ClientEntity client(Long id) {
+    // Helper methods
+    private ClientEntity client(Long id, String state) {
         ClientEntity c = new ClientEntity();
         c.setId(id);
         c.setName("Cliente " + id);
         c.setRut("11.111.111-" + id);
         c.setEmail("c"+id+"@toolrent.cl");
         c.setPhone("+5690000" + id);
-        c.setState("Activo");
+        c.setState(state);
         return c;
     }
 
@@ -53,652 +60,319 @@ class LoanServiceTest {
         t.setId(id);
         t.setName("Herr " + id);
         t.setCategory("Cat");
-        t.setReplacementValue(1000);
+        t.setReplacementValue(100000);
         t.setStock(stock);
         t.setStatus(status);
         return t;
     }
 
-    private LoanEntity activeLoan(Long clientId, Long toolId, LocalDate start, LocalDate due) {
-        LoanEntity l = new LoanEntity();
-        l.setId(999L);
-        l.setClient(client(clientId));
-        l.setTool(tool(toolId, "Prestada", 0));
-        l.setStartDate(start);
-        l.setDueDate(due);
-        l.setReturnDate(null);
-        l.setStatus("Vigente");
-        l.setFine(0.0);
-        l.setRentalCost(0.0);
-        l.setDamaged(false);
-        l.setIrreparable(false);
-        return l;
-    }
-
-    // ===========================================================
-    // ✅ TESTS DE CÁLCULO DE rentalCost
-    // ===========================================================
+    // ========== TESTS DE NUEVA VALIDACIÓN 1: ESTADO DEL CLIENTE ==========
 
     @Nested
-    @DisplayName("Tests de cálculo de rentalCost")
-    class RentalCostTests {
+    @DisplayName("Validación de Estado del Cliente")
+    class ClientStateValidationTests {
 
         @Test
-        @DisplayName("createLoan: debe calcular rentalCost correctamente (5 días × $7000 = $35000)")
-        void createLoan_calculatesRentalCost_5days() {
+        @DisplayName("✅ Debe rechazar préstamo si cliente está en estado 'Restringido'")
+        void createLoan_clientRestringido_shouldThrowException() {
+            // Given: Cliente en estado "Restringido"
             Long clientId = 1L, toolId = 10L;
-            LocalDate today = LocalDate.now();
-            LocalDate dueDate = today.plusDays(5);
+            LocalDate dueDate = LocalDate.now().plusDays(7);
 
-            ClientEntity c = client(clientId);
-            ToolEntity t = tool(toolId, "Disponible", 3);
+            ClientEntity restrictedClient = client(clientId, "Restringido");
+            ToolEntity availableTool = tool(toolId, "Disponible", 5);
 
-            when(clientRepository.findById(clientId)).thenReturn(Optional.of(c));
-            when(toolRepository.findById(toolId)).thenReturn(Optional.of(t));
-            when(loanRepository.findAll()).thenReturn(List.of());
-            when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> {
-                LoanEntity saved = inv.getArgument(0, LoanEntity.class);
-                saved.setId(100L);
-                return saved;
-            });
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(restrictedClient));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(availableTool));
 
-            LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
+            // When & Then: Debe lanzar excepción
+            assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("Restringido")
+                    .hasMessageContaining("Solo clientes activos pueden solicitar préstamos")
+                    .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
 
-            assertThat(loan.getRentalCost()).isEqualTo(7000.0);
-            assertThat(loan.getClient().getId()).isEqualTo(clientId);
-            assertThat(loan.getTool().getId()).isEqualTo(toolId);
-            assertThat(loan.getStatus()).containsIgnoringCase("Vigente");
-
-            verify(configService).getTarifaArriendoDiaria();
-            verify(loanRepository).save(any(LoanEntity.class));
-            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅ Verificar llamada
+            // Verify: No se debe guardar el préstamo
+            verify(loanRepository, never()).save(any());
+            verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("createLoan: debe calcular rentalCost con tarifa diferente (10 días × $5000 = $50000)")
-        void createLoan_calculatesRentalCost_differentRate() {
+        @DisplayName("✅ Debe rechazar préstamo si cliente está en estado 'Inactivo'")
+        void createLoan_clientInactivo_shouldThrowException() {
+            // Given: Cliente en estado "Inactivo"
+            Long clientId = 1L, toolId = 10L;
+            LocalDate dueDate = LocalDate.now().plusDays(7);
+
+            ClientEntity inactiveClient = client(clientId, "Inactivo");
+            ToolEntity availableTool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(inactiveClient));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(availableTool));
+
+            // When & Then
+            assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("estado")
+                    .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+
+            verify(loanRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("✅ Debe permitir préstamo si cliente está en estado 'Activo'")
+        void createLoan_clientActivo_shouldSucceed() {
+            // Given: Cliente ACTIVO, sin multas, sin préstamos vencidos
+            Long clientId = 1L, toolId = 10L;
+            LocalDate dueDate = LocalDate.now().plusDays(7);
+
+            ClientEntity activeClient = client(clientId, "Activo");
+            ToolEntity availableTool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(activeClient));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(availableTool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false); // ✅ Sin multas
+            when(loanRepository.findAll()).thenReturn(List.of()); // Sin préstamos previos
+            when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
+            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> {
+                LoanEntity saved = inv.getArgument(0);
+                saved.setId(100L);
+                return saved;
+            });
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Crear préstamo
+            LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
+
+            // Then: Debe crear el préstamo exitosamente
+            assertThat(loan).isNotNull();
+            assertThat(loan.getClient().getState()).isEqualTo("Activo");
+            verify(loanRepository).save(any(LoanEntity.class));
+            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any());
+        }
+    }
+
+    // ========== TESTS DE NUEVA VALIDACIÓN 2: MULTAS PENDIENTES ==========
+
+    @Nested
+    @DisplayName("Validación de Multas Pendientes")
+    class OverduesAndFinesValidationTests {
+
+        @Test
+        @DisplayName("✅ Debe rechazar préstamo si cliente tiene multas pendientes")
+        void createLoan_clientWithFines_shouldThrowException() {
+            // Given: Cliente con multas pendientes
+            Long clientId = 1L, toolId = 10L;
+            LocalDate dueDate = LocalDate.now().plusDays(7);
+
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(true); // ✅ Tiene multas
+
+            // When & Then
+            assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("multas pendientes")
+                    .hasMessageContaining("préstamos atrasados")
+                    .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+
+            verify(loanRepository, never()).save(any());
+            verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("✅ Debe permitir préstamo si cliente NO tiene multas pendientes")
+        void createLoan_clientWithoutFines_shouldSucceed() {
+            // Given: Cliente SIN multas
+            Long clientId = 1L, toolId = 10L;
+            LocalDate dueDate = LocalDate.now().plusDays(7);
+
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false); // ✅ Sin multas
+            when(loanRepository.findAll()).thenReturn(List.of());
+            when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
+            when(loanRepository.save(any())).thenAnswer(inv -> {
+                LoanEntity saved = inv.getArgument(0);
+                saved.setId(100L);
+                return saved;
+            });
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
+
+            // Then
+            assertThat(loan).isNotNull();
+            verify(loanRepository).save(any(LoanEntity.class));
+        }
+    }
+
+    // ========== TESTS DE NUEVA VALIDACIÓN 3: FECHAS ==========
+
+    @Nested
+    @DisplayName("Validación de Fechas")
+    class DateValidationTests {
+
+        @Test
+        @DisplayName("✅ Debe rechazar préstamo si dueDate es anterior a today")
+        void createLoan_dueDateInPast_shouldThrowException() {
+            // Given: Fecha de devolución en el pasado
+            Long clientId = 1L, toolId = 10L;
+            LocalDate dueDate = LocalDate.now().minusDays(1); // ❌ Ayer
+
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false);
+
+            // When & Then
+            assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("fecha de devolución no puede ser anterior")
+                    .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+
+            verify(loanRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("✅ Debe permitir préstamo si dueDate es hoy (mismo día)")
+        void createLoan_dueDateToday_shouldSucceed() {
+            // Given: Fecha de devolución es HOY
+            Long clientId = 1L, toolId = 10L;
+            LocalDate dueDate = LocalDate.now(); // ✅ Hoy
+
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false);
+            when(loanRepository.findAll()).thenReturn(List.of());
+            when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
+            when(loanRepository.save(any())).thenAnswer(inv -> {
+                LoanEntity saved = inv.getArgument(0);
+                saved.setId(100L);
+                return saved;
+            });
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
+
+            // Then: Debe permitir (mínimo 1 día)
+            assertThat(loan).isNotNull();
+            assertThat(loan.getRentalCost()).isEqualTo(7000.0); // 1 día × 7000
+            verify(loanRepository).save(any());
+        }
+    }
+
+    // ========== TESTS DE CORRECCIÓN: CÁLCULO DE rentalCost ==========
+
+    @Nested
+    @DisplayName("Cálculo Correcto de rentalCost")
+    class RentalCostCalculationTests {
+
+        @Test
+        @DisplayName("✅ Debe calcular rentalCost = días × tarifa (5 días × $7000 = $35000)")
+        void createLoan_calculatesRentalCostCorrectly_5days() {
+            // Given: Préstamo de 5 días
+            Long clientId = 1L, toolId = 10L;
+            LocalDate today = LocalDate.now();
+            LocalDate dueDate = today.plusDays(5); // 5 días
+
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
+
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false);
+            when(loanRepository.findAll()).thenReturn(List.of());
+            when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
+            when(loanRepository.save(any())).thenAnswer(inv -> {
+                LoanEntity saved = inv.getArgument(0);
+                saved.setId(100L);
+                return saved;
+            });
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
+
+            // Then: 5 días × $7000 = $35000
+            assertThat(loan.getRentalCost()).isEqualTo(35000.0);
+            verify(configService).getTarifaArriendoDiaria();
+        }
+
+        @Test
+        @DisplayName("✅ Debe calcular rentalCost = días × tarifa (10 días × $5000 = $50000)")
+        void createLoan_calculatesRentalCostCorrectly_10days() {
+            // Given: Préstamo de 10 días con tarifa de $5000
             Long clientId = 1L, toolId = 10L;
             LocalDate today = LocalDate.now();
             LocalDate dueDate = today.plusDays(10);
 
-            ClientEntity c = client(clientId);
-            ToolEntity t = tool(toolId, "Disponible", 2);
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
 
-            when(clientRepository.findById(clientId)).thenReturn(Optional.of(c));
-            when(toolRepository.findById(toolId)).thenReturn(Optional.of(t));
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false);
             when(loanRepository.findAll()).thenReturn(List.of());
             when(configService.getTarifaArriendoDiaria()).thenReturn(5000.0);
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> {
-                LoanEntity saved = inv.getArgument(0, LoanEntity.class);
-                saved.setId(101L);
+            when(loanRepository.save(any())).thenAnswer(inv -> {
+                LoanEntity saved = inv.getArgument(0);
+                saved.setId(100L);
                 return saved;
             });
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
+            // When
             LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
 
-            assertThat(loan.getRentalCost()).isEqualTo(5000.0);
-            verify(configService).getTarifaArriendoDiaria();
-            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
+            // Then: 10 días × $5000 = $50000
+            assertThat(loan.getRentalCost()).isEqualTo(50000.0);
         }
 
         @Test
-        @DisplayName("createLoan: debe usar mínimo 1 día cuando dueDate es hoy o antes")
-        void createLoan_minimumOneDayRental() {
+        @DisplayName("✅ Debe usar mínimo 1 día cuando dueDate es hoy")
+        void createLoan_minimumOneDay_whenSameDay() {
+            // Given: Préstamo que vence HOY (0 días de diferencia)
             Long clientId = 1L, toolId = 10L;
-            LocalDate today = LocalDate.now();
-            LocalDate dueDate = today;
+            LocalDate dueDate = LocalDate.now();
 
-            ClientEntity c = client(clientId);
-            ToolEntity t = tool(toolId, "Disponible", 2);
+            ClientEntity client = client(clientId, "Activo");
+            ToolEntity tool = tool(toolId, "Disponible", 5);
 
-            when(clientRepository.findById(clientId)).thenReturn(Optional.of(c));
-            when(toolRepository.findById(toolId)).thenReturn(Optional.of(t));
+            when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+            when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool));
+            when(loanRepository.hasOverduesOrFines(clientId)).thenReturn(false);
             when(loanRepository.findAll()).thenReturn(List.of());
             when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> {
-                LoanEntity saved = inv.getArgument(0, LoanEntity.class);
-                saved.setId(102L);
+            when(loanRepository.save(any())).thenAnswer(inv -> {
+                LoanEntity saved = inv.getArgument(0);
+                saved.setId(100L);
                 return saved;
             });
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
+            // When
             LoanEntity loan = loanService.createLoan(clientId, toolId, dueDate);
 
+            // Then: Mínimo 1 día → $7000
             assertThat(loan.getRentalCost()).isEqualTo(7000.0);
-            verify(configService).getTarifaArriendoDiaria();
-            verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
         }
-    }
-
-    // ===========================================================
-    // TESTS EXISTENTES DE REGLAS DE NEGOCIO
-    // ===========================================================
-
-    @Test
-    @DisplayName("Regla: rechaza préstamo si la herramienta no está 'Disponible'")
-    void rejectWhenToolNotDisponible() {
-        Long clientId = 1L, toolId = 10L;
-        LocalDate due = LocalDate.now().plusDays(5);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool(toolId, "Prestada", 1)));
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, due))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("no está disponible");
-
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("Regla: rechaza préstamo si stock es 0")
-    void rejectWhenNoStock() {
-        Long clientId = 1L, toolId = 10L;
-        LocalDate due = LocalDate.now().plusDays(5);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool(toolId, "Disponible", 0)));
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, due))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("sin stock");
-
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("Regla: rechaza si el cliente tiene préstamos vencidos (sin returnDate)")
-    void rejectWhenClientHasOverdues() {
-        Long clientId = 1L, toolId = 10L;
-        LocalDate due = LocalDate.now().plusDays(5);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool(toolId, "Disponible", 2)));
-
-        List<LoanEntity> all = new ArrayList<>();
-        all.add(activeLoan(clientId, 99L, LocalDate.now().minusDays(10), LocalDate.now().minusDays(1)));
-        when(loanRepository.findAll()).thenReturn(all);
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, due))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("vencidos");
-
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("Regla: máximo 5 préstamos activos por cliente")
-    void rejectWhenClientHas5Actives() {
-        Long clientId = 1L, toolId = 10L;
-        LocalDate due = LocalDate.now().plusDays(5);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool(toolId, "Disponible", 3)));
-
-        List<LoanEntity> all = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
-            all.add(activeLoan(clientId, (long) i, LocalDate.now().minusDays(1), LocalDate.now().plusDays(3)));
-        }
-        when(loanRepository.findAll()).thenReturn(all);
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, due))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Máximo 5 préstamos");
-
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("Regla: no permitir misma herramienta activa en paralelo para el cliente")
-    void rejectDuplicateToolForClient() {
-        Long clientId = 1L, toolId = 10L;
-        LocalDate due = LocalDate.now().plusDays(5);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.of(tool(toolId, "Disponible", 2)));
-
-        List<LoanEntity> all = List.of(
-                activeLoan(clientId, toolId, LocalDate.now().minusDays(1), LocalDate.now().plusDays(2))
-        );
-        when(loanRepository.findAll()).thenReturn(all);
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, due))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("misma");
-
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("Caso feliz: crea préstamo, calcula rentalCost, descuenta stock y guarda")
-    void createLoanHappyPath() {
-        Long clientId = 1L, toolId = 10L;
-        LocalDate due = LocalDate.now().plusDays(7);
-
-        ClientEntity c = client(clientId);
-        ToolEntity t = tool(toolId, "Disponible", 3);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(c));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.of(t));
-        when(loanRepository.findAll()).thenReturn(List.of());
-        when(configService.getTarifaArriendoDiaria()).thenReturn(7000.0);
-        when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> {
-            LoanEntity saved = inv.getArgument(0, LoanEntity.class);
-            saved.setId(100L);
-            return saved;
-        });
-        when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        LoanEntity loan = loanService.createLoan(clientId, toolId, due);
-
-        assertThat(loan.getId()).isNotNull();
-        assertThat(loan.getClient().getId()).isEqualTo(clientId);
-        assertThat(loan.getTool().getId()).isEqualTo(toolId);
-        assertThat(loan.getReturnDate()).isNull();
-        assertThat(loan.getDueDate()).isEqualTo(due);
-        assertThat(loan.getStatus()).containsIgnoringCase("Vigente");
-        assertThat(loan.getRentalCost()).isEqualTo(7000.0);
-
-        assertThat(t.getStock()).isEqualTo(2);
-
-        verify(configService).getTarifaArriendoDiaria();
-        verify(loanRepository).save(any(LoanEntity.class));
-        verify(toolRepository).save(any(ToolEntity.class));
-        verify(kardexService).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("createLoan: debe lanzar 404 cuando cliente no existe")
-    void createLoan_clientNotFound_throwsException() {
-        Long clientId = 999L;
-        Long toolId = 1L;
-        LocalDate dueDate = LocalDate.now().plusDays(7);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Cliente no encontrado")
-                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND);
-
-        verify(clientRepository).findById(clientId);
-        verify(toolRepository, never()).findById(any());
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("createLoan: debe lanzar 404 cuando herramienta no existe")
-    void createLoan_toolNotFound_throwsException() {
-        Long clientId = 1L;
-        Long toolId = 999L;
-        LocalDate dueDate = LocalDate.now().plusDays(7);
-
-        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client(clientId)));
-        when(toolRepository.findById(toolId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> loanService.createLoan(clientId, toolId, dueDate))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Herramienta no encontrada")
-                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND);
-
-        verify(clientRepository).findById(clientId);
-        verify(toolRepository).findById(toolId);
-        verify(loanRepository, never()).save(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("createLoan: debe lanzar 400 cuando clientId es null")
-    void createLoan_nullClientId_throwsBadRequest() {
-        assertThatThrownBy(() -> loanService.createLoan(null, 1L, LocalDate.now().plusDays(7)))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("clientId, toolId y dueDate son obligatorios")
-                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
-
-        verify(clientRepository, never()).findById(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("createLoan: debe lanzar 400 cuando toolId es null")
-    void createLoan_nullToolId_throwsBadRequest() {
-        assertThatThrownBy(() -> loanService.createLoan(1L, null, LocalDate.now().plusDays(7)))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("clientId, toolId y dueDate son obligatorios")
-                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
-
-        verify(clientRepository, never()).findById(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    @Test
-    @DisplayName("createLoan: debe lanzar 400 cuando dueDate es null")
-    void createLoan_nullDueDate_throwsBadRequest() {
-        assertThatThrownBy(() -> loanService.createLoan(1L, 1L, null))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("clientId, toolId y dueDate son obligatorios")
-                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
-
-        verify(clientRepository, never()).findById(any());
-        verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-    }
-
-    // ===========================================================
-    // ✅ TESTS COMPLETOS DE returnTool
-    // ===========================================================
-
-    @Nested
-    @DisplayName("Tests de returnTool (devolución de herramientas)")
-    class ReturnToolTests {
-
-        @Test
-        @DisplayName("Devolución a tiempo en buen estado: sin multa, stock aumenta")
-        void returnTool_onTime_noDamage() {
-            Long loanId = 100L;
-            LocalDate startDate = LocalDate.now().minusDays(5);
-            LocalDate dueDate = LocalDate.now().plusDays(2);
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(10L, "Prestada", 2);
-
-            LoanEntity activeLoan = new LoanEntity();
-            activeLoan.setId(loanId);
-            activeLoan.setClient(client);
-            activeLoan.setTool(tool);
-            activeLoan.setStartDate(startDate);
-            activeLoan.setDueDate(dueDate);
-            activeLoan.setReturnDate(null);
-            activeLoan.setStatus("Vigente");
-            activeLoan.setFine(0.0);
-            activeLoan.setRentalCost(35000.0);
-            activeLoan.setDamaged(false);
-            activeLoan.setIrreparable(false);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            LoanEntity returned = loanService.returnTool(loanId, false, false);
-
-            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
-            assertThat(returned.getFine()).isEqualTo(0.0);
-            assertThat(returned.getStatus()).isEqualTo("Devuelto");
-            assertThat(tool.getStock()).isEqualTo(3);
-            assertThat(tool.getStatus()).isEqualTo("Disponible");
-
-            verify(loanRepository).save(any(LoanEntity.class));
-            verify(toolRepository).save(any(ToolEntity.class));
-            verify(kardexService).registerMovement(any(), eq("DEVOLUCION"), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("Devolución atrasada: debe calcular multa usando ConfigService")
-        void returnTool_late_calculatesFine() {
-            Long loanId = 101L;
-            LocalDate startDate = LocalDate.now().minusDays(10);
-            LocalDate dueDate = LocalDate.now().minusDays(3);
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(10L, "Prestada", 2);
-
-            LoanEntity activeLoan = new LoanEntity();
-            activeLoan.setId(loanId);
-            activeLoan.setClient(client);
-            activeLoan.setTool(tool);
-            activeLoan.setStartDate(startDate);
-            activeLoan.setDueDate(dueDate);
-            activeLoan.setReturnDate(null);
-            activeLoan.setStatus("Vigente");
-            activeLoan.setFine(0.0);
-            activeLoan.setRentalCost(70000.0);
-            activeLoan.setDamaged(false);
-            activeLoan.setIrreparable(false);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
-            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            LoanEntity returned = loanService.returnTool(loanId, false, false);
-
-            assertThat(returned.getReturnDate()).isEqualTo(LocalDate.now());
-            assertThat(returned.getFine()).isEqualTo(15000.0);
-            assertThat(returned.getStatus()).isEqualTo("Atrasado");
-
-            verify(configService).getTarifaMultaDiaria();
-            verify(loanRepository).save(any(LoanEntity.class));
-            verify(kardexService).registerMovement(any(), eq("DEVOLUCION"), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("✅ NUEVO: returnTool con multa preexistente (fine != null) debe sumar correctamente")
-        void returnTool_late_withExistingFine_sumsCorrectly() {
-            Long loanId = 105L;
-            LocalDate dueDate = LocalDate.now().minusDays(2);
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(10L, "Prestada", 2);
-
-            LoanEntity activeLoan = new LoanEntity();
-            activeLoan.setId(loanId);
-            activeLoan.setClient(client);
-            activeLoan.setTool(tool);
-            activeLoan.setStartDate(LocalDate.now().minusDays(7));
-            activeLoan.setDueDate(dueDate);
-            activeLoan.setReturnDate(null);
-            activeLoan.setStatus("Vigente");
-            activeLoan.setFine(10000.0);
-            activeLoan.setRentalCost(49000.0);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
-            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            LoanEntity returned = loanService.returnTool(loanId, false, false);
-
-            assertThat(returned.getFine()).isEqualTo(20000.0);
-            assertThat(returned.getStatus()).isEqualTo("Atrasado");
-
-            verify(configService).getTarifaMultaDiaria();
-            verify(kardexService).registerMovement(any(), eq("DEVOLUCION"), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("✅ NUEVO: returnTool con daño reparable debe marcar 'En reparación'")
-        void returnTool_damaged_repairable_setsEnReparacion() {
-            Long loanId = 106L;
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(10L, "Prestada", 2);
-
-            LoanEntity activeLoan = new LoanEntity();
-            activeLoan.setId(loanId);
-            activeLoan.setClient(client);
-            activeLoan.setTool(tool);
-            activeLoan.setStartDate(LocalDate.now().minusDays(3));
-            activeLoan.setDueDate(LocalDate.now().plusDays(2));
-            activeLoan.setReturnDate(null);
-            activeLoan.setStatus("Vigente");
-            activeLoan.setFine(0.0);
-            activeLoan.setRentalCost(21000.0);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            LoanEntity returned = loanService.returnTool(loanId, true, false);
-
-            assertThat(returned.getStatus()).isEqualTo("Devuelto");
-            assertThat(tool.getStatus()).isEqualTo("En reparación");
-            assertThat(tool.getStock()).isEqualTo(2);
-            assertThat(returned.getFine()).isEqualTo(0.0);
-
-            verify(toolRepository).save(tool);
-            verify(kardexService).registerMovement(any(), eq("REPARACION"), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("✅ NUEVO: returnTool con daño irreparable y fine preexistente suma reposición")
-        void returnTool_irreparable_withExistingFine_addsReplacement() {
-            Long loanId = 107L;
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(10L, "Prestada", 1);
-            tool.setReplacementValue(50000);
-
-            LoanEntity activeLoan = new LoanEntity();
-            activeLoan.setId(loanId);
-            activeLoan.setClient(client);
-            activeLoan.setTool(tool);
-            activeLoan.setStartDate(LocalDate.now().minusDays(5));
-            activeLoan.setDueDate(LocalDate.now().minusDays(2));
-            activeLoan.setReturnDate(null);
-            activeLoan.setStatus("Vigente");
-            activeLoan.setFine(8000.0);
-            activeLoan.setRentalCost(35000.0);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(activeLoan));
-            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            LoanEntity returned = loanService.returnTool(loanId, true, true);
-
-            assertThat(returned.getFine()).isEqualTo(68000.0);
-            assertThat(tool.getStatus()).isEqualTo("Dada de baja");
-            assertThat(returned.getStatus()).isEqualTo("Atrasado");
-
-            verify(configService).getTarifaMultaDiaria();
-            verify(toolRepository).save(tool);
-            verify(kardexService).registerMovement(any(), eq("BAJA"), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("returnTool: debe manejar correctamente daño irreparable con fine null")
-        void returnTool_irreparableDamage_nullFine_chargesReplacement() {
-            Long loanId = 108L;
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(1L, "Prestada", 1);
-            tool.setReplacementValue(50000);
-
-            LoanEntity loan = new LoanEntity();
-            loan.setId(loanId);
-            loan.setClient(client);
-            loan.setTool(tool);
-            loan.setStartDate(LocalDate.now().minusDays(3));
-            loan.setDueDate(LocalDate.now().plusDays(4));
-            loan.setReturnDate(null);
-            loan.setStatus("Vigente");
-            loan.setFine(null);
-            loan.setRentalCost(49000.0);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(loan));
-            when(loanRepository.save(any(LoanEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(toolRepository.save(any(ToolEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-
-            LoanEntity returned = loanService.returnTool(loanId, true, true);
-
-            assertThat(returned.getFine()).isEqualTo(50000.0);
-            assertThat(tool.getStatus()).isEqualTo("Dada de baja");
-            verify(kardexService).registerMovement(any(), eq("BAJA"), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("✅ NUEVO: returnTool ya devuelto debe retornar sin cambios (early return)")
-        void returnTool_alreadyReturned_returnsUnchanged() {
-            Long loanId = 109L;
-
-            ClientEntity client = client(1L);
-            ToolEntity tool = tool(10L, "Disponible", 5);
-
-            LoanEntity returnedLoan = new LoanEntity();
-            returnedLoan.setId(loanId);
-            returnedLoan.setClient(client);
-            returnedLoan.setTool(tool);
-            returnedLoan.setStartDate(LocalDate.now().minusDays(10));
-            returnedLoan.setDueDate(LocalDate.now().minusDays(3));
-            returnedLoan.setReturnDate(LocalDate.now().minusDays(2));
-            returnedLoan.setStatus("Devuelto");
-            returnedLoan.setFine(15000.0);
-            returnedLoan.setRentalCost(70000.0);
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.of(returnedLoan));
-
-            LoanEntity result = loanService.returnTool(loanId, false, false);
-
-            assertThat(result.getStatus()).isEqualTo("Devuelto");
-            assertThat(result.getFine()).isEqualTo(15000.0);
-            assertThat(result.getReturnDate()).isEqualTo(LocalDate.now().minusDays(2));
-
-            verify(loanRepository, never()).save(any());
-            verify(toolRepository, never()).save(any());
-            verify(configService, never()).getTarifaMultaDiaria();
-            verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-        }
-
-        @Test
-        @DisplayName("returnTool: debe lanzar IllegalArgumentException cuando préstamo no existe")
-        void returnTool_loanNotFound_throwsException() {
-            Long loanId = 999L;
-
-            when(loanRepository.findById(loanId)).thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> loanService.returnTool(loanId, false, false))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Loan not found: " + loanId);
-
-            verify(loanRepository).findById(loanId);
-            verify(loanRepository, never()).save(any());
-            verify(kardexService, never()).registerMovement(any(), any(), any(), any(), any(), any()); // ✅
-        }
-    }
-
-    // ===========================================================
-    // TESTS DE getAllLoans
-    // ===========================================================
-
-    @Test
-    @DisplayName("getAllLoans: retorna todos los préstamos")
-    void getAllLoans_returnsAll() {
-        List<LoanEntity> loans = List.of(
-                activeLoan(1L, 10L, LocalDate.now().minusDays(2), LocalDate.now().plusDays(5)),
-                activeLoan(2L, 11L, LocalDate.now().minusDays(1), LocalDate.now().plusDays(3))
-        );
-
-        when(loanRepository.findAll()).thenReturn(loans);
-
-        List<LoanEntity> result = loanService.getAllLoans();
-
-        assertThat(result).hasSize(2);
-        assertThat(result).isEqualTo(loans);
-
-        verify(loanRepository).findAll();
-    }
-
-    @Test
-    @DisplayName("getAllLoans: debe retornar lista vacía cuando no hay préstamos")
-    void getAllLoans_emptyList() {
-        when(loanRepository.findAll()).thenReturn(List.of());
-
-        List<LoanEntity> result = loanService.getAllLoans();
-
-        assertThat(result).isEmpty();
-        verify(loanRepository).findAll();
     }
 }

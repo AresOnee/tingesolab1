@@ -1,13 +1,16 @@
 // src/components/Loans.jsx
+// ✅ VERSIÓN MEJORADA CON VALIDACIONES (Punto 3 del Gap Analysis)
+
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../http-common";
 
 /**
- * Préstamos
- * - Muestra "ID - Nombre" para Cliente y Herramienta aunque el backend solo entregue clientId/toolId.
- * - Crea préstamos con form-urlencoded.
- * - Devuelve préstamos con banderas de daño / irreparable.
- * - MEJORA: Muestra costo del arriendo
+ * Préstamos - Con validaciones mejoradas
+ * MEJORAS IMPLEMENTADAS:
+ * ✅ Validación: dueDate debe ser >= hoy
+ * ✅ Validación: Herramienta debe tener stock > 0
+ * ✅ Mensajes de error claros y descriptivos
+ * ✅ Validación de formato de fecha
  */
 export default function Loans() {
   // catálogos
@@ -73,12 +76,49 @@ export default function Loans() {
     }
   }
 
+  // ✅ FUNCIÓN MEJORADA CON VALIDACIONES
   async function handleCreate(e) {
     e.preventDefault();
+    
+    // ✅ Validación 1: Campos obligatorios
     if (!form.clientId || !form.toolId || !form.dueDate) {
-      alert("Completa Cliente, Herramienta y Fecha devolución.");
+      alert("⚠️ Por favor completa todos los campos: Cliente, Herramienta y Fecha de devolución.");
       return;
     }
+
+    // ✅ Validación 2: Fecha de devolución debe ser posterior o igual a hoy
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+    
+    const dueDate = new Date(form.dueDate);
+    if (isNaN(dueDate.getTime())) {
+      alert("⚠️ Formato de fecha inválido. Por favor selecciona una fecha válida.");
+      return;
+    }
+
+    if (dueDate < today) {
+      alert("⚠️ La fecha de devolución no puede ser anterior a hoy.");
+      return;
+    }
+
+    // ✅ Validación 3: Verificar que la herramienta tenga stock > 0
+    const selectedTool = tools.find(t => t.id === Number(form.toolId));
+    if (!selectedTool) {
+      alert("⚠️ La herramienta seleccionada no existe.");
+      return;
+    }
+
+    if (selectedTool.stock <= 0) {
+      alert(`⚠️ La herramienta "${selectedTool.name}" no tiene stock disponible (Stock actual: ${selectedTool.stock}).`);
+      return;
+    }
+
+    // ✅ Validación 4: Verificar que la herramienta esté disponible
+    if (selectedTool.status !== "Disponible") {
+      alert(`⚠️ La herramienta "${selectedTool.name}" no está disponible (Estado: ${selectedTool.status}).`);
+      return;
+    }
+
     try {
       const body = new URLSearchParams();
       body.append("clientId", form.clientId);
@@ -91,9 +131,11 @@ export default function Loans() {
 
       setForm({ clientId: "", toolId: "", dueDate: "" });
       await fetchAll();
+      alert("✅ Préstamo creado exitosamente");
     } catch (err) {
       console.error("Error al crear préstamo:", err);
-      alert(err?.response?.data?.message || err.message);
+      const errorMsg = err?.response?.data?.message || err.message || "Error desconocido";
+      alert(`❌ Error al crear préstamo: ${errorMsg}`);
     }
   }
 
@@ -117,9 +159,11 @@ export default function Loans() {
       });
 
       await fetchAll();
+      alert("✅ Préstamo devuelto exitosamente");
     } catch (err) {
       console.error("Error al devolver préstamo:", err);
-      alert(err?.response?.data?.message || err.message);
+      const errorMsg = err?.response?.data?.message || err.message;
+      alert(`❌ Error al devolver: ${errorMsg}`);
     }
   }
 
@@ -165,11 +209,12 @@ export default function Loans() {
         }}
       >
         <div>
-          <label style={labelStyle}>Cliente</label>
+          <label style={labelStyle}>Cliente *</label>
           <select
             value={form.clientId}
             onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value }))}
             style={inputStyle}
+            required
           >
             <option value="">Seleccione</option>
             {clients.map((c) => (
@@ -181,35 +226,38 @@ export default function Loans() {
         </div>
 
         <div>
-          <label style={labelStyle}>Herramienta (Stock &gt;= 0)</label>
+          <label style={labelStyle}>Herramienta (Solo con Stock &gt; 0) *</label>
           <select
             value={form.toolId}
             onChange={(e) => setForm((f) => ({ ...f, toolId: e.target.value }))}
             style={inputStyle}
+            required
           >
             <option value="">Seleccione</option>
             {tools
-              .filter((t) => (typeof t.stock === "number" ? t.stock >= 0 : true))
+              .filter((t) => t.stock > 0 && t.status === "Disponible") // ✅ Filtro mejorado
               .map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.id} - {t.name}
+                  {t.id} - {t.name} (Stock: {t.stock})
                 </option>
               ))}
           </select>
         </div>
 
         <div>
-          <label style={labelStyle}>Fecha devolución</label>
+          <label style={labelStyle}>Fecha devolución *</label>
           <input
             type="date"
             value={form.dueDate}
             onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
             style={inputStyle}
+            min={new Date().toISOString().split('T')[0]} // ✅ Prevenir fechas pasadas desde el input
+            required
           />
         </div>
 
         <button type="submit" style={primaryBtn} disabled={loading}>
-          CREAR
+          {loading ? "..." : "CREAR"}
         </button>
       </form>
 
@@ -219,13 +267,13 @@ export default function Loans() {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <Th>ID Préstamo</Th>
-              <Th>ID Cliente</Th>
-              <Th>ID Herramienta</Th>
+              <Th>ID</Th>
+              <Th>Cliente</Th>
+              <Th>Herramienta</Th>
               <Th>F. Préstamo</Th>
               <Th>F. Límite</Th>
               <Th>F. Devolución</Th>
-              <Th>Costo Arriendo</Th>{/* NUEVA COLUMNA */}
+              <Th>Costo Arriendo</Th>
               <Th>Multa</Th>
               <Th>Dañado</Th>
               <Th>Irreparable</Th>
@@ -254,7 +302,6 @@ export default function Loans() {
                     <Td>{loan.startDate ?? ""}</Td>
                     <Td>{loan.dueDate ?? ""}</Td>
                     <Td>{loan.returnDate ?? ""}</Td>
-                    {/* NUEVA CELDA: Costo Arriendo */}
                     <Td style={{ fontWeight: 600, color: '#2563eb' }}>
                       {formatCurrency(loan.rentalCost)}
                     </Td>
@@ -278,13 +325,11 @@ export default function Loans() {
                     </Td>
                     <Td>
                       {loan.returnDate ? (
-                        <button style={mutedBtn} disabled>
-                          Devuelto
-                        </button>
+                        <span style={{ color: "#64748b" }}>Devuelto</span>
                       ) : (
                         <button
-                          style={secondaryBtn}
                           onClick={() => handleReturn(loan.id)}
+                          style={returnBtn}
                         >
                           Devolver
                         </button>
@@ -301,68 +346,72 @@ export default function Loans() {
   );
 }
 
-/* ---------- estilos pequeños sin librerías ---------- */
-const labelStyle = { display: "block", fontSize: 12, marginBottom: 6, color: "#374151" };
+// ========== ESTILOS ==========
+const labelStyle = {
+  display: "block",
+  fontSize: 13,
+  fontWeight: 500,
+  marginBottom: 4,
+};
+
 const inputStyle = {
   width: "100%",
-  padding: "9px 10px",
+  padding: "8px 12px",
+  border: "1px solid #cbd5e1",
   borderRadius: 6,
-  border: "1px solid #d1d5db",
-  outline: "none",
+  fontSize: 14,
 };
-const tableStyle = { width: "100%", borderCollapse: "collapse" };
+
+const primaryBtn = {
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  padding: "8px 16px",
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: 14,
+};
+
+const returnBtn = {
+  background: "#16a34a",
+  color: "#fff",
+  border: "none",
+  borderRadius: 4,
+  padding: "4px 12px",
+  cursor: "pointer",
+  fontSize: 13,
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 14,
+};
+
 const Th = ({ children }) => (
   <th
     style={{
+      background: "#f1f5f9",
+      padding: "8px 12px",
       textAlign: "left",
-      padding: "10px 8px",
-      borderBottom: "1px solid #e5e7eb",
       fontWeight: 600,
-      whiteSpace: "nowrap",
-      color: "#111827",
-      background: "#f9fafb",
+      borderBottom: "2px solid #cbd5e1",
     }}
   >
     {children}
   </th>
 );
-const Td = ({ children, ...props }) => (
+
+const Td = ({ children, colSpan, style }) => (
   <td
-    {...props}
+    colSpan={colSpan}
     style={{
-      padding: "8px",
-      borderBottom: "1px solid #f3f4f6",
-      whiteSpace: "nowrap",
-      color: "#111827",
-      ...props.style,
+      padding: "8px 12px",
+      borderBottom: "1px solid #e2e8f0",
+      ...style,
     }}
   >
     {children}
   </td>
 );
-const primaryBtn = {
-  padding: "10px 16px",
-  borderRadius: 8,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "white",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const secondaryBtn = {
-  padding: "6px 10px",
-  borderRadius: 6,
-  border: "1px solid #2563eb",
-  background: "transparent",
-  color: "#2563eb",
-  cursor: "pointer",
-  fontWeight: 600,
-};
-const mutedBtn = {
-  padding: "6px 10px",
-  borderRadius: 6,
-  border: "1px solid #9ca3af",
-  background: "transparent",
-  color: "#6b7280",
-  fontWeight: 600,
-};
