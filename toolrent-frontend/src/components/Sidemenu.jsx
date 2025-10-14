@@ -57,7 +57,12 @@ export default function Sidemenu() {
       path: '/kardex',
       roles: ['USER', 'ADMIN']
     },
-{ text: 'Reportes', path: '/reports', icon: <AssessmentIcon />,roles: ['USER', 'ADMIN'] },
+    {
+      text: 'Reportes',
+      icon: <AssessmentIcon />,
+      path: '/reports',
+      roles: ['USER', 'ADMIN']
+    },
     { 
       text: 'Configuración', 
       icon: <SettingsIcon />, 

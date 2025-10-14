@@ -12,6 +12,8 @@ import Loans from "./components/Loans";
 import ConfigManagement from "./components/ConfigManagement";
 import KardexList from "./components/KardexList";
 import Unauthorized from "./components/Unauthorized";
+import Reports from "./components/Reports";
+
 
 export default function App() {
   return (
@@ -46,6 +48,10 @@ export default function App() {
           {/* NUEVA RUTA: Kardex - Épica 5 (RF5.2, RF5.3) */}
           <Route path="/kardex" element={
             <PrivateRoute roles={['USER','ADMIN']}><KardexList/></PrivateRoute>
+          }/>
+
+          <Route path="/reports" element={
+            <PrivateRoute roles={['USER','ADMIN']}><Reports/></PrivateRoute>
           }/>
           
           <Route path="/unauthorized" element={<Unauthorized />} />
