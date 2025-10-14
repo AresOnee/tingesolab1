@@ -14,6 +14,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HistoryIcon from '@mui/icons-material/History';
+import AssessmentIcon from '@mui/icons-material/Assessment'
 
 export const drawerWidth = 240;
 
@@ -56,6 +57,7 @@ export default function Sidemenu() {
       path: '/kardex',
       roles: ['USER', 'ADMIN']
     },
+{ text: 'Reportes', path: '/reports', icon: <AssessmentIcon />,roles: ['USER', 'ADMIN'] },
     { 
       text: 'Configuración', 
       icon: <SettingsIcon />, 

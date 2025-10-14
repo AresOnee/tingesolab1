@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
-import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -69,6 +69,8 @@ class LoanRepositoryTest {
         entityManager.flush();
     }
 
+    // ========== TESTS ORIGINALES ==========
+
     @Nested
     class CountActiveByClientIdTests {
 
@@ -76,9 +78,9 @@ class LoanRepositoryTest {
         @DisplayName("Cuenta correctamente préstamos activos (Vigente y Atrasado)")
         void countActive_shouldCountVigenteAndAtrasado() {
             // Given: Cliente con 2 préstamos vigentes y 1 atrasado
-            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(2), LocalDate.now().plusDays(5));
-            createLoan(client1, tool2, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(3));
-            createLoan(client1, tool1, "Atrasado", LocalDate.now().minusDays(10), LocalDate.now().minusDays(2));
+            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(2), LocalDate.now().plusDays(5), null);
+            createLoan(client1, tool2, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(3), null);
+            createLoan(client1, tool1, "Atrasado", LocalDate.now().minusDays(10), LocalDate.now().minusDays(2), null);
 
             entityManager.flush();
 
@@ -93,8 +95,8 @@ class LoanRepositoryTest {
         @DisplayName("No cuenta préstamos devueltos")
         void countActive_shouldNotCountDevuelto() {
             // Given: Cliente con 1 préstamo vigente y 1 devuelto
-            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(2), LocalDate.now().plusDays(5));
-            createLoan(client1, tool2, "Devuelto", LocalDate.now().minusDays(5), LocalDate.now().minusDays(1));
+            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(2), LocalDate.now().plusDays(5), null);
+            createLoan(client1, tool2, "Devuelto", LocalDate.now().minusDays(5), LocalDate.now().minusDays(1), LocalDate.now().minusDays(1));
 
             entityManager.flush();
 
@@ -121,9 +123,9 @@ class LoanRepositoryTest {
         @DisplayName("Solo cuenta préstamos del cliente específico")
         void countActive_shouldCountOnlyForSpecificClient() {
             // Given: Préstamos de diferentes clientes
-            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(5));
-            createLoan(client1, tool2, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(3));
-            createLoan(client2, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(7));
+            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(5), null);
+            createLoan(client1, tool2, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(3), null);
+            createLoan(client2, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(7), null);
 
             entityManager.flush();
 
@@ -143,7 +145,7 @@ class LoanRepositoryTest {
         @DisplayName("Retorna true cuando existe préstamo activo de esa herramienta")
         void existsActive_shouldReturnTrueWhenActiveExists() {
             // Given: Cliente con préstamo vigente de tool1
-            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(5));
+            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(5), null);
             entityManager.flush();
 
             // When: Verificamos si existe
@@ -157,7 +159,7 @@ class LoanRepositoryTest {
         @DisplayName("Retorna true para préstamos atrasados (también son activos)")
         void existsActive_shouldReturnTrueForAtrasado() {
             // Given: Cliente con préstamo atrasado de tool1
-            createLoan(client1, tool1, "Atrasado", LocalDate.now().minusDays(10), LocalDate.now().minusDays(2));
+            createLoan(client1, tool1, "Atrasado", LocalDate.now().minusDays(10), LocalDate.now().minusDays(2), null);
             entityManager.flush();
 
             // When: Verificamos
@@ -171,7 +173,7 @@ class LoanRepositoryTest {
         @DisplayName("Retorna false cuando el préstamo está devuelto")
         void existsActive_shouldReturnFalseWhenDevuelto() {
             // Given: Cliente con préstamo devuelto de tool1
-            createLoan(client1, tool1, "Devuelto", LocalDate.now().minusDays(5), LocalDate.now().minusDays(1));
+            createLoan(client1, tool1, "Devuelto", LocalDate.now().minusDays(5), LocalDate.now().minusDays(1), LocalDate.now().minusDays(1));
             entityManager.flush();
 
             // When: Verificamos
@@ -197,7 +199,7 @@ class LoanRepositoryTest {
         @DisplayName("Distingue correctamente entre diferentes herramientas")
         void existsActive_shouldDistinguishBetweenTools() {
             // Given: Cliente con préstamo de tool1 pero no de tool2
-            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(5));
+            createLoan(client1, tool1, "Vigente", LocalDate.now().minusDays(1), LocalDate.now().plusDays(5), null);
             entityManager.flush();
 
             // When: Verificamos para ambas herramientas
@@ -274,7 +276,7 @@ class LoanRepositoryTest {
     void saveAndFind() {
         // Given: Un préstamo válido
         LoanEntity loan = createLoan(client1, tool1, "Vigente",
-                LocalDate.now(), LocalDate.now().plusDays(7));
+                LocalDate.now(), LocalDate.now().plusDays(7), null);
         entityManager.flush();
 
         // When: Lo buscamos por ID
@@ -287,17 +289,261 @@ class LoanRepositoryTest {
         assertThat(found.getStatus()).isEqualTo("Vigente");
     }
 
-    // Métodos helper para crear préstamos de prueba de manera más simple
+    // ========== NUEVOS TESTS ÉPICA 6 (RF6.1) ==========
+
+    @Nested
+    @DisplayName("Tests de findActiveLoans() - RF6.1")
+    class FindActiveLoansTests {
+
+        @Test
+        @DisplayName("RF6.1: Debe retornar préstamos sin devolver (returnDate = null)")
+        void findActiveLoans_returnsOnlyUnreturnedLoans() {
+            // Given: 2 préstamos activos, 1 devuelto
+            LoanEntity active1 = createLoan(client1, tool1, "Vigente",
+                    LocalDate.now().minusDays(5), LocalDate.now().plusDays(2), null);
+
+            LoanEntity active2 = createLoan(client2, tool2, "Atrasado",
+                    LocalDate.now().minusDays(10), LocalDate.now().minusDays(1), null);
+
+            LoanEntity returned = createLoan(client1, tool2, "Devuelto",
+                    LocalDate.now().minusDays(7), LocalDate.now().minusDays(2),
+                    LocalDate.now().minusDays(1));
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoans();
+
+            // Then
+            assertThat(result).hasSize(2);
+            assertThat(result).containsExactlyInAnyOrder(active1, active2);
+            assertThat(result).doesNotContain(returned);
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe retornar préstamos vigentes y atrasados")
+        void findActiveLoans_includesBothVigenteAndAtrasado() {
+            // Given: 1 vigente, 1 atrasado
+            LoanEntity vigente = createLoan(client1, tool1, "Vigente",
+                    LocalDate.now().minusDays(2), LocalDate.now().plusDays(5), null);
+
+            LoanEntity atrasado = createLoan(client2, tool2, "Atrasado",
+                    LocalDate.now().minusDays(10), LocalDate.now().minusDays(1), null);
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoans();
+
+            // Then
+            assertThat(result).hasSize(2);
+            assertThat(result).contains(vigente, atrasado);
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe ordenar por dueDate ascendente (más urgentes primero)")
+        void findActiveLoans_ordersByDueDateAsc() {
+            // Given: 3 préstamos con diferentes dueDates
+            LoanEntity loan1 = createLoan(client1, tool1, "Vigente",
+                    LocalDate.now().minusDays(5), LocalDate.now().plusDays(10), null);
+
+            LoanEntity loan2 = createLoan(client2, tool2, "Vigente",
+                    LocalDate.now().minusDays(3), LocalDate.now().plusDays(2), null);
+
+            LoanEntity loan3 = createLoan(client1, tool2, "Atrasado",
+                    LocalDate.now().minusDays(10), LocalDate.now().minusDays(1), null);
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoans();
+
+            // Then
+            assertThat(result).hasSize(3);
+            // Orden esperado: loan3 (vencido), loan2 (+2 días), loan1 (+10 días)
+            assertThat(result.get(0)).isEqualTo(loan3);
+            assertThat(result.get(1)).isEqualTo(loan2);
+            assertThat(result.get(2)).isEqualTo(loan1);
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe retornar lista vacía si no hay préstamos activos")
+        void findActiveLoans_returnsEmptyListWhenNoActiveLoans() {
+            // Given: Solo préstamos devueltos
+            createLoan(client1, tool1, "Devuelto",
+                    LocalDate.now().minusDays(7), LocalDate.now().minusDays(2),
+                    LocalDate.now().minusDays(1));
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoans();
+
+            // Then
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe retornar lista vacía si no hay préstamos en la BD")
+        void findActiveLoans_returnsEmptyListWhenNoLoans() {
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoans();
+
+            // Then
+            assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("Tests de findActiveLoansByDateRange() - RF6.1")
+    class FindActiveLoansByDateRangeTests {
+
+        @Test
+        @DisplayName("RF6.1: Debe retornar solo préstamos dentro del rango de fechas")
+        void findActiveLoansByDateRange_returnsLoansInRange() {
+            // Given: Préstamos en diferentes fechas
+            LocalDate startRange = LocalDate.of(2025, 1, 1);
+            LocalDate endRange = LocalDate.of(2025, 1, 31);
+
+            // Dentro del rango
+            LoanEntity inRange1 = createLoan(client1, tool1, "Vigente",
+                    LocalDate.of(2025, 1, 10), LocalDate.of(2025, 1, 20), null);
+
+            LoanEntity inRange2 = createLoan(client2, tool2, "Vigente",
+                    LocalDate.of(2025, 1, 25), LocalDate.of(2025, 2, 5), null);
+
+            // Fuera del rango
+            LoanEntity outOfRange = createLoan(client1, tool2, "Vigente",
+                    LocalDate.of(2024, 12, 15), LocalDate.of(2024, 12, 30), null);
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoansByDateRange(
+                    startRange, endRange
+            );
+
+            // Then
+            assertThat(result).hasSize(2);
+            assertThat(result).containsExactlyInAnyOrder(inRange1, inRange2);
+            assertThat(result).doesNotContain(outOfRange);
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe excluir préstamos devueltos aunque estén en rango de fechas")
+        void findActiveLoansByDateRange_excludesReturnedLoans() {
+            // Given: 1 activo, 1 devuelto en el mismo rango
+            LocalDate startRange = LocalDate.of(2025, 1, 1);
+            LocalDate endRange = LocalDate.of(2025, 1, 31);
+
+            LoanEntity active = createLoan(client1, tool1, "Vigente",
+                    LocalDate.of(2025, 1, 10), LocalDate.of(2025, 1, 20), null);
+
+            LoanEntity returned = createLoan(client2, tool2, "Devuelto",
+                    LocalDate.of(2025, 1, 15), LocalDate.of(2025, 1, 25),
+                    LocalDate.of(2025, 1, 23));
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoansByDateRange(
+                    startRange, endRange
+            );
+
+            // Then
+            assertThat(result).hasSize(1);
+            assertThat(result).containsOnly(active);
+            assertThat(result).doesNotContain(returned);
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe ordenar por dueDate ascendente")
+        void findActiveLoansByDateRange_ordersByDueDateAsc() {
+            // Given: Préstamos con diferentes dueDates en el rango
+            LocalDate startRange = LocalDate.of(2025, 1, 1);
+            LocalDate endRange = LocalDate.of(2025, 1, 31);
+
+            LoanEntity loan1 = createLoan(client1, tool1, "Vigente",
+                    LocalDate.of(2025, 1, 5), LocalDate.of(2025, 2, 15), null);
+
+            LoanEntity loan2 = createLoan(client2, tool2, "Vigente",
+                    LocalDate.of(2025, 1, 10), LocalDate.of(2025, 1, 25), null);
+
+            LoanEntity loan3 = createLoan(client1, tool2, "Vigente",
+                    LocalDate.of(2025, 1, 20), LocalDate.of(2025, 2, 1), null);
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoansByDateRange(
+                    startRange, endRange
+            );
+
+            // Then
+            assertThat(result).hasSize(3);
+            // Orden: loan2 (1/25), loan3 (2/1), loan1 (2/15)
+            assertThat(result.get(0)).isEqualTo(loan2);
+            assertThat(result.get(1)).isEqualTo(loan3);
+            assertThat(result.get(2)).isEqualTo(loan1);
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe retornar lista vacía si no hay préstamos en el rango")
+        void findActiveLoansByDateRange_returnsEmptyListWhenNoLoansInRange() {
+            // Given: Préstamo fuera del rango
+            createLoan(client1, tool1, "Vigente",
+                    LocalDate.of(2024, 12, 15), LocalDate.of(2024, 12, 30), null);
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoansByDateRange(
+                    LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31)
+            );
+
+            // Then
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("RF6.1: Debe incluir préstamos en los límites del rango (startDate y endDate)")
+        void findActiveLoansByDateRange_includesBoundaryDates() {
+            // Given: Préstamos en las fechas límite
+            LocalDate startRange = LocalDate.of(2025, 1, 1);
+            LocalDate endRange = LocalDate.of(2025, 1, 31);
+
+            LoanEntity onStartDate = createLoan(client1, tool1, "Vigente",
+                    startRange, LocalDate.of(2025, 1, 10), null);
+
+            LoanEntity onEndDate = createLoan(client2, tool2, "Vigente",
+                    endRange, LocalDate.of(2025, 2, 5), null);
+
+            entityManager.flush();
+
+            // When
+            List<LoanEntity> result = loanRepository.findActiveLoansByDateRange(
+                    startRange, endRange
+            );
+
+            // Then
+            assertThat(result).hasSize(2);
+            assertThat(result).contains(onStartDate, onEndDate);
+        }
+    }
+
+    // ========== MÉTODOS HELPER ==========
+
     private LoanEntity createLoan(ClientEntity client, ToolEntity tool, String status,
-                                  LocalDate startDate, LocalDate dueDate) {
+                                  LocalDate startDate, LocalDate dueDate, LocalDate returnDate) {
         LoanEntity loan = new LoanEntity();
         loan.setClient(client);
         loan.setTool(tool);
         loan.setStartDate(startDate);
         loan.setDueDate(dueDate);
-        loan.setReturnDate(null);
+        loan.setReturnDate(returnDate);
         loan.setStatus(status);
         loan.setFine(0.0);
+        loan.setRentalCost(5000.0);
         loan.setDamaged(false);
         loan.setIrreparable(false);
         return entityManager.persist(loan);
@@ -313,6 +559,7 @@ class LoanRepositoryTest {
         loan.setReturnDate(null);
         loan.setStatus(status);
         loan.setFine(fine);
+        loan.setRentalCost(5000.0);
         loan.setDamaged(false);
         loan.setIrreparable(false);
         return entityManager.persist(loan);
