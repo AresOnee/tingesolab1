@@ -6,7 +6,7 @@ import http from '../http-common'
  * GET /api/v1/config
  */
 const getAll = async () => {
-  const { data } = await http.get('/api/v1/config/')
+  const { data } = await http.get('/api/v1/config')
   return Array.isArray(data) ? data : (data?.content ?? [])
 }
 
