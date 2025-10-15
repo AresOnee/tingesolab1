@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ClientService - Tests Completos (CRUD + Validaciones)")
-class ClientServiceCompleteTest {
+class ClientServiceTest {
 
     @Mock private ClientRepository clientRepository;
     @InjectMocks private ClientService clientService;
