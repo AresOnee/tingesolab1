@@ -22,6 +22,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -30,6 +31,7 @@ import static org.mockito.Mockito.*;
  * Cobertura completa de:
  * - createLoan() con todas las validaciones
  * - returnTool() con todos los escenarios
+ * - returnTool() con cargo por reparación (Épica 2 RN #16) ✅ NUEVO
  * - getAllLoans()
  */
 @ExtendWith(MockitoExtension.class)
@@ -578,6 +580,209 @@ class LoanServiceTest {
             assertThat(result.getStatus()).isEqualTo("Atrasado");
         }
     }
+
+    // ==================== ✅ NUEVOS TESTS: CARGO POR REPARACIÓN ====================
+
+    @Nested
+    @DisplayName("returnTool() - Cargo por Reparación (Épica 2 RN #16)")
+    class ReturnToolRepairChargeTests {
+
+        @Test
+        @DisplayName("✅ Debe aplicar cargo por reparación cuando hay daño leve")
+        void returnTool_withRepairableDamage_shouldApplyRepairCharge() {
+            // Given: Préstamo con devolución a tiempo pero con daño reparable
+            ClientEntity client = client(1L, "Juan", "Activo");
+            ToolEntity tool = tool(10L, "Taladro", "Prestada", 4, 50000);
+
+            LoanEntity loan = loan(100L, client, tool,
+                    LocalDate.now().minusDays(3),
+                    LocalDate.now().plusDays(2), // No hay atraso
+                    "Vigente");
+
+            when(loanRepository.findById(100L)).thenReturn(Optional.of(loan));
+            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
+            when(configService.getCargoReparacion()).thenReturn(10000.0); // ✅ CARGO CONFIGURABLE
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(loanRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Devolver con daño reparable
+            LoanEntity result = loanService.returnTool(100L, true, false);
+
+            // Then: Debe aplicar cargo de reparación
+            assertThat(result.getDamaged()).isTrue();
+            assertThat(result.getIrreparable()).isFalse();
+            assertThat(result.getFine()).isEqualTo(10000.0); // Solo cargo de reparación
+            assertThat(tool.getStatus()).isEqualTo("En reparación");
+            assertThat(tool.getStock()).isEqualTo(5); // Se incrementa
+
+            verify(configService).getCargoReparacion(); // ✅ Verifica que se consultó
+            verify(kardexService).registerMovement(
+                    eq(10L),
+                    eq("DEVOLUCION"),
+                    eq(1),
+                    anyString(),
+                    contains("daño reparable"),
+                    eq(100L)
+            );
+        }
+
+        @Test
+        @DisplayName("✅ Debe sumar cargo de reparación a multa por atraso")
+        void returnTool_withLateFine_andRepairCharge() {
+            // Given: Préstamo atrasado 3 días con daño reparable
+            ClientEntity client = client(1L, "Juan", "Activo");
+            ToolEntity tool = tool(10L, "Taladro", "Prestada", 4, 50000);
+
+            LoanEntity loan = loan(100L, client, tool,
+                    LocalDate.now().minusDays(10),
+                    LocalDate.now().minusDays(3), // Atrasado 3 días
+                    "Vigente");
+
+            when(loanRepository.findById(100L)).thenReturn(Optional.of(loan));
+            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0); // Multa por atraso
+            when(configService.getCargoReparacion()).thenReturn(10000.0); // Cargo reparación
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(loanRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity result = loanService.returnTool(100L, true, false);
+
+            // Then: Debe sumar ambos cargos
+            // Multa atraso: 3 días × $5,000 = $15,000
+            // Cargo reparación: $10,000
+            // Total: $25,000
+            assertThat(result.getFine()).isEqualTo(25000.0);
+            assertThat(tool.getStatus()).isEqualTo("En reparación");
+
+            verify(configService).getTarifaMultaDiaria();
+            verify(configService).getCargoReparacion();
+        }
+
+        @Test
+        @DisplayName("✅ Cargo reparación NO debe aplicarse si no hay daños")
+        void returnTool_noDamage_noRepairCharge() {
+            // Given: Devolución normal sin daños
+            ClientEntity client = client(1L, "Juan", "Activo");
+            ToolEntity tool = tool(10L, "Taladro", "Prestada", 4, 50000);
+
+            LoanEntity loan = loan(100L, client, tool,
+                    LocalDate.now().minusDays(3),
+                    LocalDate.now().plusDays(2),
+                    "Vigente");
+
+            when(loanRepository.findById(100L)).thenReturn(Optional.of(loan));
+            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(loanRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Devolver sin daños
+            LoanEntity result = loanService.returnTool(100L, false, false);
+
+            // Then: NO debe aplicar cargo de reparación
+            assertThat(result.getFine()).isEqualTo(0.0);
+            assertThat(tool.getStatus()).isEqualTo("Disponible");
+
+            verify(configService, never()).getCargoReparacion(); // ✅ No debe llamarse
+        }
+
+        @Test
+        @DisplayName("✅ Cargo reparación NO debe aplicarse si daño es irreparable")
+        void returnTool_irreparableDamage_noRepairCharge() {
+            // Given: Devolución con daño irreparable
+            ClientEntity client = client(1L, "Juan", "Activo");
+            ToolEntity tool = tool(10L, "Taladro", "Prestada", 4, 50000);
+
+            LoanEntity loan = loan(100L, client, tool,
+                    LocalDate.now().minusDays(3),
+                    LocalDate.now().plusDays(2),
+                    "Vigente");
+
+            when(loanRepository.findById(100L)).thenReturn(Optional.of(loan));
+            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(loanRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When: Devolver con daño irreparable
+            LoanEntity result = loanService.returnTool(100L, true, true);
+
+            // Then: Debe cobrar valor de reposición, NO cargo de reparación
+            assertThat(result.getFine()).isEqualTo(50000.0); // Valor de reposición
+            assertThat(tool.getStatus()).isEqualTo("Dada de baja");
+
+            verify(configService, never()).getCargoReparacion(); // ✅ No debe llamarse
+        }
+
+        @Test
+        @DisplayName("✅ Debe respetar cargo configurable de $0 (reparación gratuita)")
+        void returnTool_freeRepair_whenChargeIsZero() {
+            // Given: Cargo de reparación configurado en $0
+            ClientEntity client = client(1L, "Juan", "Activo");
+            ToolEntity tool = tool(10L, "Taladro", "Prestada", 4, 50000);
+
+            LoanEntity loan = loan(100L, client, tool,
+                    LocalDate.now().minusDays(3),
+                    LocalDate.now().plusDays(2),
+                    "Vigente");
+
+            when(loanRepository.findById(100L)).thenReturn(Optional.of(loan));
+            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
+            when(configService.getCargoReparacion()).thenReturn(0.0); // ✅ Reparación gratis
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(loanRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LoanEntity result = loanService.returnTool(100L, true, false);
+
+            // Then: No debe haber cargo adicional
+            assertThat(result.getFine()).isEqualTo(0.0);
+            assertThat(tool.getStatus()).isEqualTo("En reparación");
+
+            verify(configService).getCargoReparacion();
+        }
+
+        @Test
+        @DisplayName("✅ Debe aplicar cargo diferente si Admin lo modifica")
+        void returnTool_differentRepairCharges() {
+            // Given: Dos préstamos con cargos diferentes
+            ClientEntity client = client(1L, "Juan", "Activo");
+            ToolEntity tool1 = tool(10L, "Taladro", "Prestada", 4, 50000);
+            ToolEntity tool2 = tool(20L, "Sierra", "Prestada", 3, 40000);
+
+            LoanEntity loan1 = loan(100L, client, tool1,
+                    LocalDate.now().minusDays(3),
+                    LocalDate.now().plusDays(2),
+                    "Vigente");
+
+            LoanEntity loan2 = loan(200L, client, tool2,
+                    LocalDate.now().minusDays(3),
+                    LocalDate.now().plusDays(2),
+                    "Vigente");
+
+            when(loanRepository.findById(100L)).thenReturn(Optional.of(loan1));
+            when(loanRepository.findById(200L)).thenReturn(Optional.of(loan2));
+            when(configService.getTarifaMultaDiaria()).thenReturn(5000.0);
+
+            // Primer préstamo: cargo de $10,000
+            when(configService.getCargoReparacion()).thenReturn(10000.0);
+            when(toolRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(loanRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            LoanEntity result1 = loanService.returnTool(100L, true, false);
+
+            // Admin cambia el cargo a $15,000
+            when(configService.getCargoReparacion()).thenReturn(15000.0);
+
+            LoanEntity result2 = loanService.returnTool(200L, true, false);
+
+            // Then: Cada préstamo debe tener su cargo respectivo
+            assertThat(result1.getFine()).isEqualTo(10000.0);
+            assertThat(result2.getFine()).isEqualTo(15000.0);
+
+            verify(configService, times(2)).getCargoReparacion();
+        }
+    }
+
+    // ==================== TESTS DE CASOS EXCEPCIONALES ====================
 
     @Nested
     @DisplayName("returnTool() - Casos excepcionales")

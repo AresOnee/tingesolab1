@@ -3,6 +3,7 @@ package com.example.demo.Service;
 import com.example.demo.Entity.ConfigEntity;
 import com.example.demo.Repository.ConfigRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -109,6 +110,177 @@ class ConfigServiceTest {
 
         assertThat(result).isEqualTo(2000.0);
     }
+
+    // ==================== ✅ NUEVOS TESTS: CARGO POR REPARACIÓN ====================
+
+    @Nested
+    @DisplayName("getCargoReparacion() - Épica 2 RN #16")
+    class GetCargoReparacionTests {
+
+        @Test
+        @DisplayName("✅ Debe retornar valor de cargo por reparación")
+        void getCargoReparacion_ok() {
+            // Given
+            ConfigEntity config = config(ConfigService.CARGO_REPARACION, 10000.0);
+            when(configRepository.findByConfigKey(ConfigService.CARGO_REPARACION))
+                    .thenReturn(Optional.of(config));
+
+            // When
+            Double result = configService.getCargoReparacion();
+
+            // Then
+            assertThat(result).isEqualTo(10000.0);
+            verify(configRepository).findByConfigKey(ConfigService.CARGO_REPARACION);
+        }
+
+        @Test
+        @DisplayName("✅ Debe lanzar excepción si no existe configuración")
+        void getCargoReparacion_notFound() {
+            // Given
+            when(configRepository.findByConfigKey(ConfigService.CARGO_REPARACION))
+                    .thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> configService.getCargoReparacion())
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> {
+                        ResponseStatusException rse = (ResponseStatusException) ex;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                        assertThat(rse.getReason()).contains("CARGO_REPARACION");
+                    });
+
+            verify(configRepository).findByConfigKey(ConfigService.CARGO_REPARACION);
+        }
+    }
+
+    @Nested
+    @DisplayName("setCargoReparacion() - Épica 2 RN #16")
+    class SetCargoReparacionTests {
+
+        @Test
+        @DisplayName("✅ Debe actualizar cargo por reparación correctamente")
+        void setCargoReparacion_ok() {
+            // Given
+            ConfigEntity existing = config(ConfigService.CARGO_REPARACION, 10000.0);
+
+            when(configRepository.findByConfigKey(ConfigService.CARGO_REPARACION))
+                    .thenReturn(Optional.of(existing));
+            when(configRepository.save(any(ConfigEntity.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            ConfigEntity result = configService.setCargoReparacion(15000.0, "admin");
+
+            // Then
+            assertThat(result.getConfigValue()).isEqualTo(15000.0);
+            assertThat(result.getModifiedBy()).isEqualTo("admin");
+            assertThat(result.getLastModified()).isNotNull();
+            verify(configRepository).save(existing);
+        }
+
+        @Test
+        @DisplayName("✅ Debe rechazar valor negativo")
+        void setCargoReparacion_negativeValue() {
+            // When/Then
+            assertThatThrownBy(() -> configService.setCargoReparacion(-1000.0, "admin"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> {
+                        ResponseStatusException rse = (ResponseStatusException) ex;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                        assertThat(rse.getReason()).contains("mayor o igual a 0");
+                    });
+
+            verify(configRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("✅ Debe rechazar valor null")
+        void setCargoReparacion_nullValue() {
+            // When/Then
+            assertThatThrownBy(() -> configService.setCargoReparacion(null, "admin"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> {
+                        ResponseStatusException rse = (ResponseStatusException) ex;
+                        assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    });
+
+            verify(configRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("✅ Debe permitir valor cero (cargo gratuito)")
+        void setCargoReparacion_zeroValue() {
+            // Given
+            ConfigEntity existing = config(ConfigService.CARGO_REPARACION, 10000.0);
+
+            when(configRepository.findByConfigKey(ConfigService.CARGO_REPARACION))
+                    .thenReturn(Optional.of(existing));
+            when(configRepository.save(any(ConfigEntity.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            ConfigEntity result = configService.setCargoReparacion(0.0, "admin");
+
+            // Then
+            assertThat(result.getConfigValue()).isEqualTo(0.0);
+            verify(configRepository).save(existing);
+        }
+    }
+
+    @Nested
+    @DisplayName("Integración de todas las tarifas")
+    class IntegrationTests {
+
+        @Test
+        @DisplayName("✅ Debe poder cambiar cargo múltiples veces")
+        void changeCargoMultipleTimes() {
+            // Given
+            ConfigEntity config = config(ConfigService.CARGO_REPARACION, 10000.0);
+
+            when(configRepository.findByConfigKey(ConfigService.CARGO_REPARACION))
+                    .thenReturn(Optional.of(config));
+            when(configRepository.save(any(ConfigEntity.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            configService.setCargoReparacion(15000.0, "admin1");
+            configService.setCargoReparacion(20000.0, "admin2");
+            configService.setCargoReparacion(12000.0, "admin3");
+
+            // Then
+            verify(configRepository, times(3)).save(config);
+            assertThat(config.getConfigValue()).isEqualTo(12000.0);
+            assertThat(config.getModifiedBy()).isEqualTo("admin3");
+        }
+
+        @Test
+        @DisplayName("✅ Todas las tarifas deben poder obtenerse simultáneamente")
+        void getAllTarifas_success() {
+            // Given
+            ConfigEntity arriendo = config(ConfigService.TARIFA_ARRIENDO_DIARIA, 5000.0);
+            ConfigEntity multa = config(ConfigService.TARIFA_MULTA_DIARIA, 2000.0);
+            ConfigEntity reparacion = config(ConfigService.CARGO_REPARACION, 10000.0);
+
+            when(configRepository.findByConfigKey(ConfigService.TARIFA_ARRIENDO_DIARIA))
+                    .thenReturn(Optional.of(arriendo));
+            when(configRepository.findByConfigKey(ConfigService.TARIFA_MULTA_DIARIA))
+                    .thenReturn(Optional.of(multa));
+            when(configRepository.findByConfigKey(ConfigService.CARGO_REPARACION))
+                    .thenReturn(Optional.of(reparacion));
+
+            // When
+            Double tarifaArriendo = configService.getTarifaArriendoDiaria();
+            Double tarifaMulta = configService.getTarifaMultaDiaria();
+            Double cargoReparacion = configService.getCargoReparacion();
+
+            // Then
+            assertThat(tarifaArriendo).isEqualTo(5000.0);
+            assertThat(tarifaMulta).isEqualTo(2000.0);
+            assertThat(cargoReparacion).isEqualTo(10000.0);
+        }
+    }
+
+    // ==================== TESTS ORIGINALES ====================
 
     @Test
     @DisplayName("updateConfig: debe actualizar valor y datos de modificación")

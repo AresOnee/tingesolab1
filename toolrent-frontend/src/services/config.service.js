@@ -38,6 +38,17 @@ const getTarifaMulta = async () => {
 }
 
 /**
+ * ✅ NUEVO: Obtener cargo por reparación
+ * GET /api/v1/config/cargo-reparacion
+ * 
+ * Épica 2 - RN #16: Retorna el cargo configurable para herramientas con daños leves
+ */
+const getCargoReparacion = async () => {
+  const { data } = await http.get('/api/v1/config/cargo-reparacion')
+  return data.cargoReparacion
+}
+
+/**
  * Actualizar configuración por ID (solo Admin)
  * PUT /api/v1/config/{id}
  * Body: { value: 5000.0 }
@@ -67,14 +78,28 @@ const updateTarifaMulta = async (value) => {
   return data
 }
 
+/**
+ * ✅ NUEVO: Actualizar cargo por reparación (solo Admin)
+ * PUT /api/v1/config/cargo-reparacion
+ * Body: { value: 10000.0 }
+ * 
+ * Épica 2 - RN #16: Permite configurar el cargo por reparación de daños leves
+ */
+const updateCargoReparacion = async (value) => {
+  const { data } = await http.put('/api/v1/config/cargo-reparacion', { value })
+  return data
+}
+
 const configService = {
   getAll,
   getByKey,
   getTarifaArriendo,
   getTarifaMulta,
+  getCargoReparacion,      // ✅ NUEVO
   updateById,
   updateTarifaArriendo,
   updateTarifaMulta,
+  updateCargoReparacion,   // ✅ NUEVO
 }
 
 export default configService

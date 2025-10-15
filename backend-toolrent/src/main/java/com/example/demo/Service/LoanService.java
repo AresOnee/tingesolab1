@@ -169,9 +169,22 @@ public class LoanService {
         return saved;
     }
 
+    // ==========================================
+// FRAGMENTO MODIFICADO DE LoanService.java
+// Método: returnTool()
+// ==========================================
+
     /**
      * RF2.3: Registrar devolución de herramienta
+     * RF2.4: Calcular multas por atraso
      * RF5.1: Registrar automáticamente en kardex
+     *
+     * ✅ NUEVA FUNCIONALIDAD: Aplicar cargo por reparación configurable (Épica 2 - RN #16)
+     *
+     * @param loanId ID del préstamo a devolver
+     * @param isDamaged Si la herramienta está dañada
+     * @param isIrreparable Si el daño es irreparable
+     * @return LoanEntity actualizado
      */
     @Transactional
     public LoanEntity returnTool(Long loanId, boolean isDamaged, boolean isIrreparable) {
@@ -179,6 +192,7 @@ public class LoanService {
                 .orElseThrow(() -> new IllegalArgumentException("Loan not found: " + loanId));
         var tool = loan.getTool();
 
+        // Si ya está devuelto, no hacer nada
         if ("Devuelto".equalsIgnoreCase(loan.getStatus())) {
             return loan;
         }
@@ -186,48 +200,75 @@ public class LoanService {
         LocalDate today = LocalDate.now();
         loan.setReturnDate(today);
 
+        // 1) Calcular multa por atraso
         long daysLate = Math.max(0, ChronoUnit.DAYS.between(loan.getDueDate(), today));
         double fineDaily = configService.getTarifaMultaDiaria();
 
         if (daysLate > 0) {
-            loan.setFine((loan.getFine() == null ? 0.0 : loan.getFine()) + daysLate * fineDaily);
-            loan.setStatus("Atrasado");
-        } else {
-            loan.setStatus("Devuelto");
+            loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + (daysLate * fineDaily));
         }
 
-        if (isDamaged) {
-            if (isIrreparable) {
-                // Baja definitiva: no retorna al stock, se cobra reposición
-                tool.setStatus("Dada de baja");
-                loan.setFine((loan.getFine() == null ? 0.0 : loan.getFine()) + tool.getReplacementValue());
-                loan.setIrreparable(true);
+        int stockActual = tool.getStock();
+        loan.setDamaged(isDamaged);
+        loan.setIrreparable(isIrreparable);
 
-                kardexService.registerMovement(
-                        tool.getId(),
-                        "BAJA",
-                        0,
-                        "USER",
-                        "Baja por daño irreparable (loan #" + loanId + ")",
-                        loanId
-                );
-            } else {
-                tool.setStatus("En reparación");
-                tool.setStock(tool.getStock() + 1);
+        // 2) Procesar según tipo de daño
+        if (isDamaged && isIrreparable) {
+            // ========================================
+            // CASO 1: Daño IRREPARABLE
+            // ========================================
+            // RN: Herramienta → "Dada de baja"
+            // RN: Cobrar valor de reposición al cliente
+            tool.setStatus("Dada de baja");
 
-                kardexService.registerMovement(
-                        tool.getId(),
-                        "DEVOLUCION",
-                        1,
-                        "USER",
-                        "Devolución con daño reparable (loan #" + loanId + ")",
-                        loanId
-                );
-            }
-            loan.setDamaged(true);
+            // NO incrementar stock (la herramienta se pierde)
+            // Cobrar valor de reposición
+            double repoValue = tool.getReplacementValue();
+            loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + repoValue);
+
+            // Registrar baja en kardex
+            kardexService.registerMovement(
+                    tool.getId(),
+                    "BAJA",
+                    0, // No cambia stock (ya está considerado en préstamo)
+                    "USER",
+                    "Baja por daño irreparable (loan #" + loanId + ")",
+                    loanId
+            );
+
+        } else if (isDamaged && !isIrreparable) {
+            // ========================================
+            // CASO 2: Daño REPARABLE (LEVE)
+            // ✅ NUEVA FUNCIONALIDAD
+            // ========================================
+            // RN #16: Herramienta → "En reparación"
+            // RN #16: Aplicar cargo de reparación configurable
+            tool.setStatus("En reparación");
+            tool.setStock(stockActual + 1); // Se incrementa stock (herramienta recuperable)
+
+            // ✅ NUEVO: Aplicar cargo por reparación configurable
+            double cargoReparacion = configService.getCargoReparacion();
+            loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + cargoReparacion);
+
+            // Registrar devolución con daño reparable en kardex
+            kardexService.registerMovement(
+                    tool.getId(),
+                    "DEVOLUCION",
+                    1, // Se recupera 1 unidad
+                    "USER",
+                    "Devolución con daño reparable (loan #" + loanId + ")",
+                    loanId
+            );
+
         } else {
-            tool.setStock(tool.getStock() + 1);
+            // ========================================
+            // CASO 3: Sin daños
+            // ========================================
+            // RN: Herramienta → "Disponible"
+            tool.setStatus("Disponible");
+            tool.setStock(stockActual + 1);
 
+            // Registrar devolución normal en kardex
             kardexService.registerMovement(
                     tool.getId(),
                     "DEVOLUCION",
@@ -238,9 +279,19 @@ public class LoanService {
             );
         }
 
+        // ✅ CORRECCIÓN CRÍTICA: Establecer estado según si hay multa o no
+        // RN: Si hay multa (por atraso o daño), estado = "Atrasado"
+        // RN: Si no hay multa, estado = "Devuelto"
+        if (loan.getFine() != null && loan.getFine() > 0) {
+            loan.setStatus("Atrasado");
+        } else {
+            loan.setStatus("Devuelto");
+        }
+
         toolRepository.save(tool);
         return loanRepository.save(loan);
     }
+
 
     public List<LoanEntity> getAllLoans() {
         return loanRepository.findAll();

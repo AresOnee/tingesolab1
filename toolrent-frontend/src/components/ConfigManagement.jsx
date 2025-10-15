@@ -114,8 +114,23 @@ export default function ConfigManagement() {
         return 'Tarifa Diaria de Arriendo'
       case 'TARIFA_MULTA_DIARIA':
         return 'Tarifa Diaria de Multa'
+      case 'CARGO_REPARACION':  // ✅ NUEVO
+        return 'Cargo por Reparación'
       default:
         return key
+    }
+  }
+
+  const getConfigDescription = (key) => {
+    switch(key) {
+      case 'TARIFA_ARRIENDO_DIARIA':
+        return 'Costo diario por arrendar una herramienta'
+      case 'TARIFA_MULTA_DIARIA':
+        return 'Multa diaria por devolución atrasada'
+      case 'CARGO_REPARACION':  // ✅ NUEVO
+        return 'Cargo fijo por reparación de daños leves (Épica 2 - RN #16)'
+      default:
+        return 'Sin descripción'
     }
   }
 
@@ -172,11 +187,15 @@ export default function ConfigManagement() {
                 <TableCell>
                   <Chip 
                     label={getConfigLabel(config.configKey)} 
-                    color="primary" 
+                    color={config.configKey === 'CARGO_REPARACION' ? 'secondary' : 'primary'}  // ✅ Color diferente
                     size="small"
                   />
                 </TableCell>
-                <TableCell>{config.description}</TableCell>
+                <TableCell>
+                  <Typography variant="body2" color="text.secondary">
+                    {config.description || getConfigDescription(config.configKey)}
+                  </Typography>
+                </TableCell>
                 <TableCell align="right">
                   {editingId === config.id ? (
                     <TextField
@@ -259,17 +278,22 @@ export default function ConfigManagement() {
       {/* Información adicional */}
       <Box sx={{ mt: 3 }}>
         <Typography variant="body2" color="text.secondary">
-          <strong>Nota:</strong> Las tarifas se expresan en valores diarios.
+          <strong>Nota:</strong> Las tarifas se expresan en valores diarios o fijos.
         </Typography>
         <Box component="ul" sx={{ mt: 1, pl: 2 }}>
           <li>
             <Typography variant="body2" color="text.secondary">
-              La tarifa de arriendo se cobra por cada día que la herramienta está prestada.
+              <strong>Tarifa de arriendo:</strong> Se cobra por cada día que la herramienta está prestada.
             </Typography>
           </li>
           <li>
             <Typography variant="body2" color="text.secondary">
-              La tarifa de multa se aplica por cada día de atraso en la devolución.
+              <strong>Tarifa de multa:</strong> Se aplica por cada día de atraso en la devolución.
+            </Typography>
+          </li>
+          <li>
+            <Typography variant="body2" color="text.secondary">
+              <strong>Cargo por reparación:</strong> Se aplica cuando una herramienta se devuelve con daños leves reparables (Épica 2 - RN #16).
             </Typography>
           </li>
         </Box>
