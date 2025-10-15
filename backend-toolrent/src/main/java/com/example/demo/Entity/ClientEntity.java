@@ -32,7 +32,7 @@ public class ClientEntity {
      * Validaciones: Obligatorio, mínimo 2 caracteres
      */
     @NotBlank(message = "El nombre es obligatorio")
-    @Size(min = 2, max = 100, message = "El nombre debe tener entre 2 y 100 caracteres")
+    @Size(min = 2, max = 100, message = "El nombre debe tener entre 2 y 100 caracteres (Campo obligatorio)")
     @Column(nullable = false, length = 100)
     private String name;
 
@@ -50,7 +50,7 @@ public class ClientEntity {
      */
     @NotBlank(message = "El RUT es obligatorio")
     @Pattern(
-            regexp = "^\\d{1,2}\\.\\d{3}\\.\\d{3}-[\\dkK]$",
+            regexp = "^(?:\\s*|\\d{1,2}\\.\\d{3}\\.\\d{3}-[\\dkK])$",
             message = "Formato de RUT inválido. Use el formato: 12.345.678-9"
     )
     @Column(nullable = false, unique = true, length = 15)
@@ -66,7 +66,7 @@ public class ClientEntity {
      */
     @NotBlank(message = "El teléfono es obligatorio")
     @Pattern(
-            regexp = "^\\+56\\d{9}$",
+            regexp = "^(?:\\s*|\\+56\\d{9})$",
             message = "Formato de teléfono inválido. Use el formato: +56912345678"
     )
     @Column(nullable = false, length = 20)
@@ -94,7 +94,7 @@ public class ClientEntity {
      */
     @NotBlank(message = "El estado es obligatorio")
     @Pattern(
-            regexp = "^(Activo|Restringido)$",
+            regexp = "^(?:\\s*|(Activo|Restringido))$",
             message = "Estado inválido. Valores permitidos: Activo, Restringido"
     )
     @Column(nullable = false, length = 20)

@@ -16,11 +16,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -373,4 +370,96 @@ class ClientControllerTest {
                             """))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    @DisplayName("PATCH /api/v1/clients/{id}/state => 400 cuando falta el campo state")
+    void patchState_missingStateField() throws Exception {
+        // When & Then: El controlador debe validar y no invocar el servicio
+        mvc.perform(patch("/api/v1/clients/1/state")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                            }
+                            """))
+                .andExpect(status().isBadRequest());
+
+        verify(clientService, never()).updateState(any(Long.class), any(String.class));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/clients/{id}/state => 400 cuando state viene en blanco")
+    void patchState_blankState() throws Exception {
+        // When & Then: El controlador debe validar espacios en blanco
+        mvc.perform(patch("/api/v1/clients/1/state")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                                "state": "   "
+                            }
+                            """))
+                .andExpect(status().isBadRequest());
+
+        verify(clientService, never()).updateState(any(Long.class), any(String.class));
+    }
+
+    // ==================== GET BY ID CLIENT ====================
+
+    @Test
+    @DisplayName("GET /api/v1/clients/{id} => 200 con cliente existente")
+    void getById_ok() throws Exception {
+        // Given
+        ClientEntity client = new ClientEntity(
+                5L,
+                "Ana Gómez",
+                "11.111.111-1",
+                "+56955555555",
+                "ana@toolrent.cl",
+                "Activo"
+        );
+        when(clientService.getById(5L)).thenReturn(client);
+
+        // When & Then
+        mvc.perform(get("/api/v1/clients/5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(5))
+                .andExpect(jsonPath("$.name").value("Ana Gómez"))
+                .andExpect(jsonPath("$.rut").value("11.111.111-1"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/clients/{id} => 404 cuando cliente no existe")
+    void getById_notFound() throws Exception {
+        // Given
+        when(clientService.getById(999L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
+
+        // When & Then
+        mvc.perform(get("/api/v1/clients/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ==================== DELETE CLIENT ====================
+
+    @Test
+    @DisplayName("DELETE /api/v1/clients/{id} => 204 y sin contenido")
+    void delete_ok() throws Exception {
+        // When & Then
+        mvc.perform(delete("/api/v1/clients/3"))
+                .andExpect(status().isNoContent());
+
+        verify(clientService).delete(3L);
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/clients/{id} => 404 cuando cliente no existe")
+    void delete_notFound() throws Exception {
+        // Given
+        doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"))
+                .when(clientService).delete(404L);
+
+        // When & Then
+        mvc.perform(delete("/api/v1/clients/404"))
+                .andExpect(status().isNotFound());
+    }
+
 }
