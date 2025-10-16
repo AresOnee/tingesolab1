@@ -37,7 +37,7 @@ export default function Sidemenu() {
       text: 'Herramientas', 
       icon: <BuildIcon />, 
       path: '/tools',
-      roles: ['ADMIN']
+      roles: ['USER','ADMIN']
     },
     { 
       text: 'Clientes', 

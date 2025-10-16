@@ -30,7 +30,7 @@ export default function App() {
           }/>
           
           <Route path="/tools" element={
-            <PrivateRoute roles={['ADMIN']}><ToolsList/></PrivateRoute>
+            <PrivateRoute roles={['USER','ADMIN']}><ToolsList/></PrivateRoute>
           }/>
           
           <Route path="/clients" element={

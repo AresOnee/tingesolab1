@@ -2,6 +2,7 @@ package com.example.demo.Controller;
 
 import com.example.demo.Entity.ClientEntity;
 import com.example.demo.Entity.LoanEntity;
+import com.example.demo.Service.ConfigService;
 import com.example.demo.Repository.ClientRepository;
 import com.example.demo.Repository.LoanRepository;
 import com.example.demo.Repository.ToolRepository;
@@ -18,7 +19,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Controlador para Reportes y Consultas
@@ -44,12 +47,17 @@ public class ReportController {
     @Autowired
     private ToolRepository toolRepository;
 
+    // ✅ NUEVO: Inyectar ConfigService para obtener multa por día
+    @Autowired
+    private ConfigService configService;
+
     /**
      * RF6.1: Listar préstamos activos y su estado (vigentes, atrasados)
      * GET /api/v1/reports/active-loans
      *
      * Retorna todos los préstamos que NO han sido devueltos (returnDate = null)
      * Los préstamos pueden estar en estado "Vigente" o "Atrasado"
+     * ✅ MODIFICADO: Calcula multas dinámicamente usando la configuración del sistema
      *
      * Filtros opcionales:
      * - startDate: Fecha de inicio del rango
@@ -59,7 +67,7 @@ public class ReportController {
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @Operation(summary = "Obtener préstamos activos (vigentes y atrasados)",
             description = "RF6.1: Lista todos los préstamos que no han sido devueltos, " +
-                    "con filtros opcionales por rango de fechas")
+                    "con filtros opcionales por rango de fechas. Calcula multas automáticamente.")
     public ResponseEntity<List<LoanEntity>> getActiveLoans(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -76,6 +84,30 @@ public class ReportController {
             // Sin filtro de fechas, traer todos los activos
             activeLoans = loanRepository.findActiveLoans();
         }
+
+        // ✅ NUEVO: Calcular multas dinámicamente y actualizar estado
+        Double multaPorDia = configService.getTarifaMultaDiaria();
+        LocalDate hoy = LocalDate.now();
+
+        activeLoans = activeLoans.stream().map(loan -> {
+            // Calcular días de atraso
+            long diasAtraso = 0;
+            Double multaCalculada = 0.0;
+            String estadoActualizado = "Vigente";
+
+            if (hoy.isAfter(loan.getDueDate())) {
+                // Préstamo atrasado
+                diasAtraso = ChronoUnit.DAYS.between(loan.getDueDate(), hoy);
+                multaCalculada = diasAtraso * multaPorDia;
+                estadoActualizado = "Atrasado";
+            }
+
+            // Actualizar valores calculados (no se persisten en BD, solo para la respuesta)
+            loan.setFine(multaCalculada);
+            loan.setStatus(estadoActualizado);
+
+            return loan;
+        }).collect(Collectors.toList());
 
         return ResponseEntity.ok(activeLoans);
     }
@@ -103,13 +135,16 @@ public class ReportController {
      *
      * Retorna ranking de herramientas ordenadas por cantidad de préstamos
      *
-     * Filtros opcionales:
-     * - startDate: Fecha de inicio para contar préstamos
-     * - endDate: Fecha de fin para contar préstamos
+     * Parámetros opcionales:
+     * - startDate: Fecha inicio del rango
+     * - endDate: Fecha fin del rango
      * - limit: Cantidad de resultados (default: 10)
      */
     @GetMapping("/most-loaned-tools")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    @Operation(summary = "Obtener ranking de herramientas más prestadas",
+            description = "RF6.3: Lista las herramientas ordenadas por cantidad de préstamos, " +
+                    "con filtros opcionales por rango de fechas")
     public ResponseEntity<List<ToolRanking>> getMostLoanedTools(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -119,20 +154,26 @@ public class ReportController {
 
             @RequestParam(defaultValue = "10") int limit
     ) {
-        List<ToolRanking> ranking;  // ← Aquí dentro de la clase puedes usar solo "ToolRanking"
+        List<ToolRanking> ranking;
 
         if (startDate != null && endDate != null) {
+            // Ranking filtrado por fechas
             ranking = toolRepository.findMostLoanedToolsByDateRange(
                     startDate, endDate, PageRequest.of(0, limit)
             );
         } else {
+            // Ranking global (todos los préstamos históricos)
             ranking = toolRepository.findMostLoanedTools(PageRequest.of(0, limit));
         }
 
         return ResponseEntity.ok(ranking);
     }
-    @Setter
+
+    /**
+     * DTO para el ranking de herramientas
+     */
     @Getter
+    @Setter
     public static class ToolRanking {
         private Long toolId;
         private String toolName;
@@ -143,6 +184,5 @@ public class ReportController {
             this.toolName = toolName;
             this.loanCount = loanCount;
         }
-
     }
 }
