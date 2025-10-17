@@ -27,10 +27,10 @@ http.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Variable para almacenar la función showError del contexto
+// Variable para almacenar la funcion showError del contexto
 let showErrorCallback = null;
 
-// Función para configurar el callback desde el contexto
+// Funcion para configurar el callback desde el contexto
 export const setupErrorHandler = (callback) => {
   showErrorCallback = callback;
   console.log("✅ setupErrorHandler configurado");
@@ -44,7 +44,7 @@ http.interceptors.response.use(
     console.log("📦 Response completa:", error.response);
     console.log("📊 Response data:", error.response?.data);
     
-    // Extraer información del error
+    // Extraer informacion del error
     const status = error.response?.status;
     const backendData = error.response?.data;
     
@@ -52,58 +52,58 @@ http.interceptors.response.use(
     let message = 
       backendData?.message ||           // Spring Boot: { message: "..." }
       backendData?.error ||              // Algunos frameworks: { error: "..." }
-      backendData?.detail ||             // REST estándar: { detail: "..." }
+      backendData?.detail ||             // REST estandar: { detail: "..." }
       backendData?.errors?.[0] ||        // Array de errores: { errors: ["..."] }
       backendData?.errors?.[0]?.message || // Array de objetos: { errors: [{message: "..."}] }
       (typeof backendData === 'string' ? backendData : null) || // String directo
       error.message ||                   // Mensaje de Axios
       'Error desconocido';
     
-    console.log("💬 Mensaje extraído del backend:", message);
+    console.log("💬 Mensaje extraido del backend:", message);
     
-    // Si el mensaje sigue siendo técnico de Axios, mejorarlo
+    // Si el mensaje sigue siendo tecnico de Axios, mejorarlo
     let userMessage = message;
     
     if (message.includes("Request failed with status code") || 
         message.includes("Network Error") ||
         message === "Error desconocido") {
       
-      // Mensajes genéricos mejorados por código de error
+      // Mensajes genericos mejorados por codigo de error
       switch (status) {
         case 400:
-          userMessage = "Datos inválidos. Por favor verifica la información ingresada.";
+          userMessage = "Datos invalidos. Por favor verifica la informacion ingresada.";
           break;
         case 401:
-          userMessage = "Sesión expirada. Por favor inicia sesión nuevamente.";
+          userMessage = "Sesion expirada. Por favor inicia sesion nuevamente.";
           break;
         case 403:
-          userMessage = "No tienes permisos para realizar esta acción.";
+          userMessage = "No tienes permisos para realizar esta accion.";
           break;
         case 404:
           userMessage = "Recurso no encontrado.";
           break;
         case 409:
-          userMessage = "El recurso ya existe o está en conflicto.";
+          userMessage = "El recurso ya existe o esta en conflicto.";
           break;
         case 422:
-          userMessage = "Los datos enviados no son válidos.";
+          userMessage = "Los datos enviados no son validos.";
           break;
         case 500:
-          userMessage = "Error interno del servidor. Por favor intenta más tarde.";
+          userMessage = "Error interno del servidor. Por favor intenta mas tarde.";
           break;
         case 503:
           userMessage = "Servicio temporalmente no disponible.";
           break;
         default:
           if (message.includes("Network Error")) {
-            userMessage = "Error de conexión. Verifica que el servidor esté funcionando.";
+            userMessage = "Error de conexion. Verifica que el servidor este funcionando.";
           } else {
             userMessage = `Error ${status || 'desconocido'}`;
           }
       }
     }
     
-    // Agregar emoji según el tipo de error
+    // Agregar emoji segun el tipo de error
     const emojiMap = {
       400: "⚠️",
       401: "🔒",
@@ -120,12 +120,12 @@ http.interceptors.response.use(
     
     console.log("👤 Mensaje final para usuario:", userMessage);
     
-    // Mostrar error en Snackbar si el callback está configurado
+    // Mostrar error en Snackbar si el callback esta configurado
     if (showErrorCallback) {
       showErrorCallback(userMessage);
     } else {
-      console.warn("⚠️ showErrorCallback NO configurado - error no se mostrará en UI");
-      console.warn("💡 Asegúrate de llamar setupErrorHandler(showError) en App.jsx");
+      console.warn("⚠️ showErrorCallback NO configurado - error no se mostrara en UI");
+      console.warn("💡 Asegurate de llamar setupErrorHandler(showError) en App.jsx");
     }
     
     // Rechazar la promesa para que el catch funcione

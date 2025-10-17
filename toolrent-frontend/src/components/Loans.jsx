@@ -1,5 +1,5 @@
 // src/components/Loans.jsx
-// VERSION FINAL - Sin console.log, con soporte para objetos anidados
+// VERSION FINAL - Con validaciones completas que coinciden con el backend
 
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -40,31 +40,21 @@ export default function Loans() {
 
   // FUNCIONES CON SOPORTE PARA OBJETOS ANIDADOS Y SNAKE_CASE
   const clientLabel = (loan) => {
-    // Si client es un objeto completo con datos
     if (loan.client && typeof loan.client === 'object' && loan.client.name) {
       return `${loan.client.id} - ${loan.client.name}`;
     }
-    
-    // Si es solo un ID (camelCase o snake_case)
     const id = loan.clientId || loan.client_id || loan.client?.id;
-    
     if (!id) return "—";
-    
     const client = clientsMap.get(Number(id));
     return client ? `${id} - ${client.name}` : `${id} - N/A`;
   };
 
   const toolLabel = (loan) => {
-    // Si tool es un objeto completo con datos
     if (loan.tool && typeof loan.tool === 'object' && loan.tool.name) {
       return `${loan.tool.id} - ${loan.tool.name}`;
     }
-    
-    // Si es solo un ID (camelCase o snake_case)
     const id = loan.toolId || loan.tool_id || loan.tool?.id;
-    
     if (!id) return "—";
-    
     const tool = toolsMap.get(Number(id));
     return tool ? `${id} - ${tool.name}` : `${id} - N/A`;
   };
@@ -73,7 +63,6 @@ export default function Loans() {
     return loan.loanDate || loan.loan_date || loan.startDate || "—";
   };
 
-  // Formatear moneda chilena
   const formatCurrency = (value) => {
     if (value == null || value === 0) return "$0";
     return new Intl.NumberFormat('es-CL', {
@@ -97,7 +86,6 @@ export default function Loans() {
         http.get("/api/v1/loans/"),
       ]);
 
-      // Para cada respuesta, verifica si es una lista directa o un objeto con propiedad "content"
       const clientsData = Array.isArray(cRes.data) ? cRes.data : (cRes.data?.content ?? []);
       const toolsData = Array.isArray(tRes.data) ? tRes.data : (tRes.data?.content ?? []);
       const loansData = Array.isArray(lRes.data) ? lRes.data : (lRes.data?.content ?? []);
@@ -117,11 +105,13 @@ export default function Loans() {
   async function handleCreate(e) {
     e.preventDefault();
     
+    // Validacion 1: Campos obligatorios
     if (!form.clientId || !form.toolId || !form.dueDate) {
       showWarning("Por favor completa todos los campos: Cliente, Herramienta y Fecha de devolucion");
       return;
     }
 
+    // Validacion 2: Fecha valida y futura
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -136,22 +126,116 @@ export default function Loans() {
       return;
     }
 
+    // Validacion 3: Herramienta existe
     const selectedTool = tools.find(t => t.id === Number(form.toolId));
     if (!selectedTool) {
       showError("La herramienta seleccionada no existe");
       return;
     }
 
+    // Validacion 4: Herramienta tiene stock
     if (selectedTool.stock <= 0) {
       showWarning(`La herramienta "${selectedTool.name}" no tiene stock disponible (Stock actual: ${selectedTool.stock})`);
       return;
     }
 
+    // Validacion 5: Herramienta esta disponible
     if (selectedTool.status !== "Disponible") {
       showWarning(`La herramienta "${selectedTool.name}" no esta disponible (Estado: ${selectedTool.status})`);
       return;
     }
 
+    // Validacion 6: Cliente existe
+    const selectedClient = clients.find(c => c.id === Number(form.clientId));
+    if (!selectedClient) {
+      showError("El cliente seleccionado no existe");
+      return;
+    }
+
+    // Validacion 7: Cliente debe estar en estado "Activo"
+    // (Coincide con validacion del backend en LoanService.java linea 59-63)
+    if (selectedClient.state && selectedClient.state !== "Activo") {
+      showWarning(
+        `El cliente esta en estado "${selectedClient.state}". ` +
+        `Solo clientes activos pueden solicitar prestamos.`
+      );
+      return;
+    }
+
+    // Validacion 8: Cliente no tiene multas pendientes
+    // (Coincide con validacion del backend usando hasOverduesOrFines)
+    const clientLoansWithFines = loans.filter(loan => {
+      const loanClientId = loan.client?.id || loan.clientId;
+      const hasReturn = loan.returnDate || loan.return_date;
+      return loanClientId === Number(form.clientId) && (loan.fine || 0) > 0 && !hasReturn;
+    });
+
+    if (clientLoansWithFines.length > 0) {
+      const totalFines = clientLoansWithFines.reduce((sum, loan) => sum + (loan.fine || 0), 0);
+      showWarning(
+        `El cliente "${selectedClient.name}" tiene multas pendientes de ${formatCurrency(totalFines)}. ` +
+        `Debe pagar las multas antes de solicitar un nuevo prestamo.`
+      );
+      return;
+    }
+
+    // Validacion 9: Cliente no tiene prestamos vencidos sin devolver
+    // (Coincide con validacion del backend en LoanService.java linea 92-100)
+    const overdueLoans = loans.filter(loan => {
+      const loanClientId = loan.client?.id || loan.clientId;
+      const hasReturn = loan.returnDate || loan.return_date;
+      const loanDueDate = loan.dueDate || loan.due_date;
+      
+      if (!loanDueDate || hasReturn) return false;
+      
+      const due = new Date(loanDueDate);
+      return loanClientId === Number(form.clientId) && due < today;
+    });
+
+    if (overdueLoans.length > 0) {
+      showWarning(
+        `El cliente "${selectedClient.name}" tiene ${overdueLoans.length} prestamo(s) vencido(s) sin devolver. ` +
+        `Debe devolver las herramientas antes de solicitar nuevos prestamos.`
+      );
+      return;
+    }
+
+    // Validacion 10: Maximo 5 prestamos activos
+    // (Coincide con validacion del backend en LoanService.java linea 102-110)
+    const activeLoans = loans.filter(loan => {
+      const loanClientId = loan.client?.id || loan.clientId;
+      const hasReturn = loan.returnDate || loan.return_date;
+      return loanClientId === Number(form.clientId) && !hasReturn;
+    });
+
+    if (activeLoans.length >= 5) {
+      showWarning(
+        `El cliente "${selectedClient.name}" ya tiene ${activeLoans.length} prestamos activos. ` +
+        `El maximo permitido es 5 prestamos activos por cliente.`
+      );
+      return;
+    }
+
+    // Validacion 11: Cliente no tiene prestamo activo de esta herramienta
+    // (Coincide con validacion del backend en LoanService.java linea 112-121)
+    const hasActiveLoan = loans.some(loan => {
+      const loanClientId = loan.client?.id || loan.clientId;
+      const loanToolId = loan.tool?.id || loan.toolId;
+      const hasReturn = loan.returnDate || loan.return_date;
+      return loanClientId === Number(form.clientId) && 
+             loanToolId === Number(form.toolId) && 
+             !hasReturn;
+    });
+
+    if (hasActiveLoan) {
+      showWarning(
+        `El cliente "${selectedClient.name}" ya tiene un prestamo activo de "${selectedTool.name}". ` +
+        `Debe devolverla antes de solicitar un nuevo prestamo.`
+      );
+      return;
+    }
+
+    // Si todas las validaciones pasan, enviar al backend
     try {
       const body = new URLSearchParams();
       body.append("clientId", form.clientId);
@@ -166,22 +250,12 @@ export default function Loans() {
       await fetchAll();
       showSuccess("Prestamo creado exitosamente");
     } catch (err) {
-      console.error("❌ Error al crear prestamo:", err);
-      console.error("📦 Response data:", err.response?.data);
-      console.error("📊 Status:", err.response?.status);
-      
-      // Si el interceptor no mostró el error, mostrarlo manualmente
-      if (err.response?.data?.message) {
-        showError(`Error al crear préstamo: ${err.response.data.message}`);
-      } else if (!err.response) {
-        showError("Error de conexión. Verifica que el backend esté funcionando.");
-      }
-      // Si el interceptor ya lo mostró, no hacer nada más
+      console.error("Error al crear prestamo:", err);
+      // El interceptor ya mostro el mensaje del backend
     }
   }
 
   function handleOpenReturnModal(loan) {
-    // Extraer IDs de forma flexible (objetos anidados o IDs directos)
     const clientId = loan.client?.id || loan.clientId || loan.client_id;
     const toolId = loan.tool?.id || loan.toolId || loan.tool_id;
     
