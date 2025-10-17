@@ -1,7 +1,10 @@
 // src/App.jsx
+// VERSION CORREGIDA - Con setupErrorHandler configurado
+
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import Box from '@mui/material/Box'
-import Toolbar from '@mui/material/Toolbar'
+import Box from '@mui/material/Box';
+import Toolbar from '@mui/material/Toolbar';
+import { useEffect } from "react";
 import PrivateRoute from "./PrivateRoute";
 import Navbar from "./components/Navbar";
 import Sidemenu, { drawerWidth } from "./components/Sidemenu";
@@ -13,15 +16,25 @@ import ConfigManagement from "./components/ConfigManagement";
 import KardexList from "./components/KardexList";
 import Unauthorized from "./components/Unauthorized";
 import Reports from "./components/Reports";
+import { SnackbarProvider, useSnackbar } from "./contexts/SnackbarContext";
+import { setupErrorHandler } from "./http-common";
 
+// Componente interno para configurar el interceptor
+function AppContent() {
+  const { showError } = useSnackbar();
 
-export default function App() {
+  // CRÍTICO: Configurar el interceptor HTTP para usar el Snackbar
+  useEffect(() => {
+    console.log("🔧 Configurando interceptor HTTP con Snackbar");
+    setupErrorHandler(showError);
+  }, [showError]);
+
   return (
     <Router>
       <Navbar />
       <Sidemenu />
       <Box component="main" sx={{ flexGrow: 1, ml: `${drawerWidth}px`, p: 3 }}>
-        <Toolbar /> {/* espacio bajo la AppBar */}
+        <Toolbar />
         <Routes>
           <Route path="/" element={<Navigate to="/home" replace />} />
           
@@ -45,7 +58,6 @@ export default function App() {
             <PrivateRoute roles={['ADMIN']}><ConfigManagement/></PrivateRoute>
           }/>
           
-          {/* NUEVA RUTA: Kardex - Épica 5 (RF5.2, RF5.3) */}
           <Route path="/kardex" element={
             <PrivateRoute roles={['USER','ADMIN']}><KardexList/></PrivateRoute>
           }/>
@@ -59,5 +71,13 @@ export default function App() {
         </Routes>
       </Box>
     </Router>
+  );
+}
+
+export default function App() {
+  return (
+    <SnackbarProvider>
+      <AppContent />
+    </SnackbarProvider>
   );
 }

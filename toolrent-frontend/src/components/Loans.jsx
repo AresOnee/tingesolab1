@@ -1,19 +1,18 @@
 // src/components/Loans.jsx
-// ✅ VERSIÓN MEJORADA CON VALIDACIONES (Punto 3 del Gap Analysis)
+// VERSION FINAL - Sin console.log, con soporte para objetos anidados
 
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
 import React, { useEffect, useMemo, useState } from "react";
-import api from "../http-common";
+import http from "../http-common";
+import ReturnLoanModal from "./ReturnLoanModal";
+import { useSnackbar } from "../contexts/SnackbarContext";
 
-/**
- * Préstamos - Con validaciones mejoradas
- * MEJORAS IMPLEMENTADAS:
- * ✅ Validación: dueDate debe ser >= hoy
- * ✅ Validación: Herramienta debe tener stock > 0
- * ✅ Mensajes de error claros y descriptivos
- * ✅ Validación de formato de fecha
- */
 export default function Loans() {
-  // catálogos
+  // Contexto de notificaciones
+  const { showSuccess, showError, showWarning } = useSnackbar();
+
+  // catalogos
   const [clients, setClients] = useState([]);
   const [tools, setTools] = useState([]);
   // tabla
@@ -22,7 +21,11 @@ export default function Loans() {
   const [form, setForm] = useState({ clientId: "", toolId: "", dueDate: "" });
   const [loading, setLoading] = useState(false);
 
-  // mapas para resolver rápidamente nombres por id
+  // Estado para el modal de devolucion
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState(null);
+
+  // mapas para resolver rapidamente nombres por id
   const clientsMap = useMemo(() => {
     const m = new Map();
     for (const c of clients) m.set(c.id, c);
@@ -35,11 +38,40 @@ export default function Loans() {
     return m;
   }, [tools]);
 
-  const clientLabel = (id) =>
-    id ? `${id} - ${clientsMap.get(Number(id))?.name ?? "N/A"}` : "—";
+  // FUNCIONES CON SOPORTE PARA OBJETOS ANIDADOS Y SNAKE_CASE
+  const clientLabel = (loan) => {
+    // Si client es un objeto completo con datos
+    if (loan.client && typeof loan.client === 'object' && loan.client.name) {
+      return `${loan.client.id} - ${loan.client.name}`;
+    }
+    
+    // Si es solo un ID (camelCase o snake_case)
+    const id = loan.clientId || loan.client_id || loan.client?.id;
+    
+    if (!id) return "—";
+    
+    const client = clientsMap.get(Number(id));
+    return client ? `${id} - ${client.name}` : `${id} - N/A`;
+  };
 
-  const toolLabel = (id) =>
-    id ? `${id} - ${toolsMap.get(Number(id))?.name ?? "N/A"}` : "—";
+  const toolLabel = (loan) => {
+    // Si tool es un objeto completo con datos
+    if (loan.tool && typeof loan.tool === 'object' && loan.tool.name) {
+      return `${loan.tool.id} - ${loan.tool.name}`;
+    }
+    
+    // Si es solo un ID (camelCase o snake_case)
+    const id = loan.toolId || loan.tool_id || loan.tool?.id;
+    
+    if (!id) return "—";
+    
+    const tool = toolsMap.get(Number(id));
+    return tool ? `${id} - ${tool.name}` : `${id} - N/A`;
+  };
+
+  const getLoanDate = (loan) => {
+    return loan.loanDate || loan.loan_date || loan.startDate || "—";
+  };
 
   // Formatear moneda chilena
   const formatCurrency = (value) => {
@@ -60,62 +92,63 @@ export default function Loans() {
     try {
       setLoading(true);
       const [cRes, tRes, lRes] = await Promise.all([
-        api.get("/api/v1/clients/"),
-        api.get("/api/v1/tools/"),
-        api.get("/api/v1/loans/"),
+        http.get("/api/v1/clients/"),
+        http.get("/api/v1/tools/"),
+        http.get("/api/v1/loans/"),
       ]);
 
-      setClients(Array.isArray(cRes.data) ? cRes.data : []);
-      setTools(Array.isArray(tRes.data) ? tRes.data : []);
-      setLoans(Array.isArray(lRes.data) ? lRes.data : []);
+      // Para cada respuesta, verifica si es una lista directa o un objeto con propiedad "content"
+      const clientsData = Array.isArray(cRes.data) ? cRes.data : (cRes.data?.content ?? []);
+      const toolsData = Array.isArray(tRes.data) ? tRes.data : (tRes.data?.content ?? []);
+      const loansData = Array.isArray(lRes.data) ? lRes.data : (lRes.data?.content ?? []);
+
+      setClients(clientsData);
+      setTools(toolsData);
+      setLoans(loansData);
+
     } catch (err) {
       console.error("Error cargando datos:", err);
-      alert("Error cargando datos (ver consola).");
+      showError("Error cargando datos. Ver consola para detalles.");
     } finally {
       setLoading(false);
     }
   }
 
-  // ✅ FUNCIÓN MEJORADA CON VALIDACIONES
   async function handleCreate(e) {
     e.preventDefault();
     
-    // ✅ Validación 1: Campos obligatorios
     if (!form.clientId || !form.toolId || !form.dueDate) {
-      alert("⚠️ Por favor completa todos los campos: Cliente, Herramienta y Fecha de devolución.");
+      showWarning("Por favor completa todos los campos: Cliente, Herramienta y Fecha de devolucion");
       return;
     }
 
-    // ✅ Validación 2: Fecha de devolución debe ser posterior o igual a hoy
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+    today.setHours(0, 0, 0, 0);
     
     const dueDate = new Date(form.dueDate);
     if (isNaN(dueDate.getTime())) {
-      alert("⚠️ Formato de fecha inválido. Por favor selecciona una fecha válida.");
+      showWarning("Formato de fecha invalido. Por favor selecciona una fecha valida");
       return;
     }
 
     if (dueDate < today) {
-      alert("⚠️ La fecha de devolución no puede ser anterior a hoy.");
+      showWarning("La fecha de devolucion no puede ser anterior a hoy");
       return;
     }
 
-    // ✅ Validación 3: Verificar que la herramienta tenga stock > 0
     const selectedTool = tools.find(t => t.id === Number(form.toolId));
     if (!selectedTool) {
-      alert("⚠️ La herramienta seleccionada no existe.");
+      showError("La herramienta seleccionada no existe");
       return;
     }
 
     if (selectedTool.stock <= 0) {
-      alert(`⚠️ La herramienta "${selectedTool.name}" no tiene stock disponible (Stock actual: ${selectedTool.stock}).`);
+      showWarning(`La herramienta "${selectedTool.name}" no tiene stock disponible (Stock actual: ${selectedTool.stock})`);
       return;
     }
 
-    // ✅ Validación 4: Verificar que la herramienta esté disponible
     if (selectedTool.status !== "Disponible") {
-      alert(`⚠️ La herramienta "${selectedTool.name}" no está disponible (Estado: ${selectedTool.status}).`);
+      showWarning(`La herramienta "${selectedTool.name}" no esta disponible (Estado: ${selectedTool.status})`);
       return;
     }
 
@@ -125,49 +158,55 @@ export default function Loans() {
       body.append("toolId", form.toolId);
       body.append("dueDate", form.dueDate);
 
-      await api.post("/api/v1/loans/create", body, {
+      await http.post("/api/v1/loans/create", body, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
       setForm({ clientId: "", toolId: "", dueDate: "" });
       await fetchAll();
-      alert("✅ Préstamo creado exitosamente");
+      showSuccess("Prestamo creado exitosamente");
     } catch (err) {
-      console.error("Error al crear préstamo:", err);
-      const errorMsg = err?.response?.data?.message || err.message || "Error desconocido";
-      alert(`❌ Error al crear préstamo: ${errorMsg}`);
+      console.error("❌ Error al crear prestamo:", err);
+      console.error("📦 Response data:", err.response?.data);
+      console.error("📊 Status:", err.response?.status);
+      
+      // Si el interceptor no mostró el error, mostrarlo manualmente
+      if (err.response?.data?.message) {
+        showError(`Error al crear préstamo: ${err.response.data.message}`);
+      } else if (!err.response) {
+        showError("Error de conexión. Verifica que el backend esté funcionando.");
+      }
+      // Si el interceptor ya lo mostró, no hacer nada más
     }
   }
 
-  async function handleReturn(loanId) {
-    const isDamaged = window.confirm(
-      "¿El ítem está dañado? (Aceptar = Sí / Cancelar = No)"
-    );
-    let isIrreparable = false;
-    if (isDamaged) {
-      isIrreparable = window.confirm("¿El daño es irreparable?");
-    }
-
-    try {
-      const body = new URLSearchParams();
-      body.append("loanId", loanId);
-      body.append("isDamaged", String(isDamaged));
-      body.append("isIrreparable", String(isIrreparable));
-
-      await api.post("/api/v1/loans/return", body, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      });
-
-      await fetchAll();
-      alert("✅ Préstamo devuelto exitosamente");
-    } catch (err) {
-      console.error("Error al devolver préstamo:", err);
-      const errorMsg = err?.response?.data?.message || err.message;
-      alert(`❌ Error al devolver: ${errorMsg}`);
-    }
+  function handleOpenReturnModal(loan) {
+    // Extraer IDs de forma flexible (objetos anidados o IDs directos)
+    const clientId = loan.client?.id || loan.clientId || loan.client_id;
+    const toolId = loan.tool?.id || loan.toolId || loan.tool_id;
+    
+    const enrichedLoan = {
+      ...loan,
+      clientId: clientId,
+      toolId: toolId,
+      clientName: loan.client?.name || clientsMap.get(clientId)?.name || 'N/A',
+      toolName: loan.tool?.name || toolsMap.get(toolId)?.name || 'N/A',
+      replacementValue: loan.tool?.replacementValue || toolsMap.get(toolId)?.replacementValue || 0,
+    };
+    setSelectedLoan(enrichedLoan);
+    setReturnModalOpen(true);
   }
 
-  // utilitaria para badge de estado
+  function handleCloseReturnModal() {
+    setReturnModalOpen(false);
+    setSelectedLoan(null);
+  }
+
+  async function handleReturnSuccess() {
+    await fetchAll();
+    showSuccess("Prestamo devuelto exitosamente");
+  }
+
   const Status = ({ value }) => {
     const color =
       value === "Vigente"
@@ -175,16 +214,16 @@ export default function Loans() {
         : value === "Atrasado"
         ? "#d97706"
         : value === "Devuelto"
-        ? "#2563eb"
-        : "#64748b";
+        ? "#64748b"
+        : "#9ca3af";
+
     return (
       <span
         style={{
-          display: "inline-block",
-          padding: "3px 8px",
-          borderRadius: 999,
-          background: `${color}20`,
-          color,
+          background: color,
+          color: "#fff",
+          padding: "2px 8px",
+          borderRadius: 4,
           fontSize: 12,
           fontWeight: 600,
         }}
@@ -195,127 +234,148 @@ export default function Loans() {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ margin: "8px 0 16px" }}>Crear Préstamo</h2>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" gutterBottom>
+        Gestion de Prestamos
+      </Typography>
 
-      <form
-        onSubmit={handleCreate}
+      {/* FORMULARIO CREAR PRESTAMO */}
+      <div
         style={{
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "minmax(260px,1fr) minmax(260px,1fr) 180px auto",
-          alignItems: "end",
+          background: "#fff",
+          padding: 16,
+          borderRadius: 8,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           marginBottom: 24,
         }}
       >
-        <div>
-          <label style={labelStyle}>Cliente *</label>
-          <select
-            value={form.clientId}
-            onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value }))}
-            style={inputStyle}
-            required
-          >
-            <option value="">Seleccione</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.id} - {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+          Crear Prestamo
+        </h3>
 
-        <div>
-          <label style={labelStyle}>Herramienta (Solo con Stock &gt; 0) *</label>
-          <select
-            value={form.toolId}
-            onChange={(e) => setForm((f) => ({ ...f, toolId: e.target.value }))}
-            style={inputStyle}
-            required
-          >
-            <option value="">Seleccione</option>
-            {tools
-              .filter((t) => t.stock > 0 && t.status === "Disponible") // ✅ Filtro mejorado
-              .map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.id} - {t.name} (Stock: {t.stock})
+        <form
+          onSubmit={handleCreate}
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12 }}
+        >
+          <div>
+            <label style={labelStyle}>Cliente</label>
+            <select
+              style={inputStyle}
+              value={form.clientId}
+              onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+            >
+              <option value="">-- Seleccionar --</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.id} - {c.name}
                 </option>
               ))}
-          </select>
-        </div>
+            </select>
+          </div>
 
-        <div>
-          <label style={labelStyle}>Fecha devolución *</label>
-          <input
-            type="date"
-            value={form.dueDate}
-            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-            style={inputStyle}
-            min={new Date().toISOString().split('T')[0]} // ✅ Prevenir fechas pasadas desde el input
-            required
-          />
-        </div>
+          <div>
+            <label style={labelStyle}>Herramienta</label>
+            <select
+              style={inputStyle}
+              value={form.toolId}
+              onChange={(e) => setForm({ ...form, toolId: e.target.value })}
+            >
+              <option value="">-- Seleccionar --</option>
+              {tools
+                .filter(t => t.status === "Disponible" && t.stock > 0)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.id} - {t.name} (Stock: {t.stock})
+                  </option>
+                ))}
+            </select>
+          </div>
 
-        <button type="submit" style={primaryBtn} disabled={loading}>
-          {loading ? "..." : "CREAR"}
-        </button>
-      </form>
+          <div>
+            <label style={labelStyle}>Fecha Devolucion</label>
+            <input
+              type="date"
+              style={inputStyle}
+              value={form.dueDate}
+              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+            />
+          </div>
 
-      <h2 style={{ margin: "0 0 12px" }}>Préstamos Activos</h2>
+          <div style={{ alignSelf: "end" }}>
+            <button type="submit" style={primaryBtn} disabled={loading}>
+              Crear
+            </button>
+          </div>
+        </form>
+      </div>
 
-      <div style={{ overflowX: "auto" }}>
+      {/* TABLA PRESTAMOS ACTIVOS */}
+      <div
+        style={{
+          background: "#fff",
+          padding: 16,
+          borderRadius: 8,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        }}
+      >
+        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+          Prestamos Activos
+        </h3>
+
         <table style={tableStyle}>
           <thead>
             <tr>
               <Th>ID</Th>
               <Th>Cliente</Th>
               <Th>Herramienta</Th>
-              <Th>F. Préstamo</Th>
-              <Th>F. Límite</Th>
-              <Th>F. Devolución</Th>
+              <Th>Fecha Prestamo</Th>
+              <Th>Fecha Limite</Th>
+              <Th>Fecha Devolucion</Th>
               <Th>Costo Arriendo</Th>
               <Th>Multa</Th>
-              <Th>Dañado</Th>
+              <Th>Danado</Th>
               <Th>Irreparable</Th>
               <Th>Estado</Th>
-              <Th>Acciones</Th>
+              <Th>Accion</Th>
             </tr>
           </thead>
           <tbody>
-            {loans.length === 0 ? (
+            {loading ? (
               <tr>
                 <Td colSpan={12} style={{ textAlign: "center" }}>
-                  {loading ? "Cargando…" : "No hay préstamos."}
+                  Cargando...
+                </Td>
+              </tr>
+            ) : loans.length === 0 ? (
+              <tr>
+                <Td colSpan={12} style={{ textAlign: "center", color: "#94a3b8" }}>
+                  No hay prestamos registrados
                 </Td>
               </tr>
             ) : (
               loans.map((loan) => {
-                const cid =
-                  loan.client?.id ?? loan.clientId ?? loan.client_id ?? null;
-                const tid = loan.tool?.id ?? loan.toolId ?? loan.tool_id ?? null;
-
                 return (
-                  <tr key={loan.id}>
+                  <tr key={loan.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <Td>{loan.id}</Td>
-                    <Td>{clientLabel(cid)}</Td>
-                    <Td>{toolLabel(tid)}</Td>
-                    <Td>{loan.startDate ?? ""}</Td>
-                    <Td>{loan.dueDate ?? ""}</Td>
-                    <Td>{loan.returnDate ?? ""}</Td>
-                    <Td style={{ fontWeight: 600, color: '#2563eb' }}>
-                      {formatCurrency(loan.rentalCost)}
+                    <Td>{clientLabel(loan)}</Td>
+                    <Td>{toolLabel(loan)}</Td>
+                    <Td>{getLoanDate(loan)}</Td>
+                    <Td>{loan.dueDate || loan.due_date || "—"}</Td>
+                    <Td>{loan.returnDate || loan.return_date || "—"}</Td>
+                    <Td>{formatCurrency(loan.rentalCost || loan.rental_cost)}</Td>
+                    <Td style={{ color: (loan.fine || 0) > 0 ? "#dc2626" : "#64748b" }}>
+                      {formatCurrency(loan.fine)}
                     </Td>
-                    <Td>{formatCurrency(loan.fine)}</Td>
                     <Td>
                       {loan.damaged === true
-                        ? "Sí"
+                        ? "Si"
                         : loan.damaged === false
                         ? "No"
                         : ""}
                     </Td>
                     <Td>
                       {loan.irreparable === true
-                        ? "Sí"
+                        ? "Si"
                         : loan.irreparable === false
                         ? "No"
                         : ""}
@@ -324,11 +384,11 @@ export default function Loans() {
                       <Status value={loan.status} />
                     </Td>
                     <Td>
-                      {loan.returnDate ? (
+                      {loan.returnDate || loan.return_date ? (
                         <span style={{ color: "#64748b" }}>Devuelto</span>
                       ) : (
                         <button
-                          onClick={() => handleReturn(loan.id)}
+                          onClick={() => handleOpenReturnModal(loan)}
                           style={returnBtn}
                         >
                           Devolver
@@ -342,7 +402,14 @@ export default function Loans() {
           </tbody>
         </table>
       </div>
-    </div>
+
+      <ReturnLoanModal
+        open={returnModalOpen}
+        onClose={handleCloseReturnModal}
+        loan={selectedLoan}
+        onSuccess={handleReturnSuccess}
+      />
+    </Box>
   );
 }
 
