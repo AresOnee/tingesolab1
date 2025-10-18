@@ -1,5 +1,5 @@
 // src/components/Loans.jsx
-// VERSION FINAL - Con validaciones completas que coinciden con el backend
+// VERSION MEJORADA - Con manejo específico de mensajes de error del backend
 
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -105,138 +105,28 @@ export default function Loans() {
   async function handleCreate(e) {
     e.preventDefault();
     
+    // ✅ MEJORADO: Validaciones básicas del frontend
+    // Las validaciones detalladas se hacen en el backend
+    
     // Validacion 1: Campos obligatorios
     if (!form.clientId || !form.toolId || !form.dueDate) {
       showWarning("Por favor completa todos los campos: Cliente, Herramienta y Fecha de devolucion");
       return;
     }
 
-    // Validacion 2: Fecha valida y futura
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
+    // Validacion 2: Fecha valida
     const dueDate = new Date(form.dueDate);
     if (isNaN(dueDate.getTime())) {
       showWarning("Formato de fecha invalido. Por favor selecciona una fecha valida");
       return;
     }
 
-    if (dueDate < today) {
-      showWarning("La fecha de devolucion no puede ser anterior a hoy");
-      return;
-    }
-
-    // Validacion 3: Herramienta existe
-    const selectedTool = tools.find(t => t.id === Number(form.toolId));
-    if (!selectedTool) {
-      showError("La herramienta seleccionada no existe");
-      return;
-    }
-
-    // Validacion 4: Herramienta tiene stock
-    if (selectedTool.stock <= 0) {
-      showWarning(`La herramienta "${selectedTool.name}" no tiene stock disponible (Stock actual: ${selectedTool.stock})`);
-      return;
-    }
-
-    // Validacion 5: Herramienta esta disponible
-    if (selectedTool.status !== "Disponible") {
-      showWarning(`La herramienta "${selectedTool.name}" no esta disponible (Estado: ${selectedTool.status})`);
-      return;
-    }
-
-    // Validacion 6: Cliente existe
-    const selectedClient = clients.find(c => c.id === Number(form.clientId));
-    if (!selectedClient) {
-      showError("El cliente seleccionado no existe");
-      return;
-    }
-
-    // Validacion 7: Cliente debe estar en estado "Activo"
-    // (Coincide con validacion del backend en LoanService.java linea 59-63)
-    if (selectedClient.state && selectedClient.state !== "Activo") {
-      showWarning(
-        `El cliente esta en estado "${selectedClient.state}". ` +
-        `Solo clientes activos pueden solicitar prestamos.`
-      );
-      return;
-    }
-
-    // Validacion 8: Cliente no tiene multas pendientes
-    // (Coincide con validacion del backend usando hasOverduesOrFines)
-    const clientLoansWithFines = loans.filter(loan => {
-      const loanClientId = loan.client?.id || loan.clientId;
-      const hasReturn = loan.returnDate || loan.return_date;
-      return loanClientId === Number(form.clientId) && (loan.fine || 0) > 0 && !hasReturn;
-    });
-
-    if (clientLoansWithFines.length > 0) {
-      const totalFines = clientLoansWithFines.reduce((sum, loan) => sum + (loan.fine || 0), 0);
-      showWarning(
-        `El cliente "${selectedClient.name}" tiene multas pendientes de ${formatCurrency(totalFines)}. ` +
-        `Debe pagar las multas antes de solicitar un nuevo prestamo.`
-      );
-      return;
-    }
-
-    // Validacion 9: Cliente no tiene prestamos vencidos sin devolver
-    // (Coincide con validacion del backend en LoanService.java linea 92-100)
-    const overdueLoans = loans.filter(loan => {
-      const loanClientId = loan.client?.id || loan.clientId;
-      const hasReturn = loan.returnDate || loan.return_date;
-      const loanDueDate = loan.dueDate || loan.due_date;
-      
-      if (!loanDueDate || hasReturn) return false;
-      
-      const due = new Date(loanDueDate);
-      return loanClientId === Number(form.clientId) && due < today;
-    });
-
-    if (overdueLoans.length > 0) {
-      showWarning(
-        `El cliente "${selectedClient.name}" tiene ${overdueLoans.length} prestamo(s) vencido(s) sin devolver. ` +
-        `Debe devolver las herramientas antes de solicitar nuevos prestamos.`
-      );
-      return;
-    }
-
-    // Validacion 10: Maximo 5 prestamos activos
-    // (Coincide con validacion del backend en LoanService.java linea 102-110)
-    const activeLoans = loans.filter(loan => {
-      const loanClientId = loan.client?.id || loan.clientId;
-      const hasReturn = loan.returnDate || loan.return_date;
-      return loanClientId === Number(form.clientId) && !hasReturn;
-    });
-
-    if (activeLoans.length >= 5) {
-      showWarning(
-        `El cliente "${selectedClient.name}" ya tiene ${activeLoans.length} prestamos activos. ` +
-        `El maximo permitido es 5 prestamos activos por cliente.`
-      );
-      return;
-    }
-
-    // Validacion 11: Cliente no tiene prestamo activo de esta herramienta
-    // (Coincide con validacion del backend en LoanService.java linea 112-121)
-    const hasActiveLoan = loans.some(loan => {
-      const loanClientId = loan.client?.id || loan.clientId;
-      const loanToolId = loan.tool?.id || loan.toolId;
-      const hasReturn = loan.returnDate || loan.return_date;
-      return loanClientId === Number(form.clientId) && 
-             loanToolId === Number(form.toolId) && 
-             !hasReturn;
-    });
-
-    if (hasActiveLoan) {
-      showWarning(
-        `El cliente "${selectedClient.name}" ya tiene un prestamo activo de "${selectedTool.name}". ` +
-        `Debe devolverla antes de solicitar un nuevo prestamo.`
-      );
-      return;
-    }
-
-    // Si todas las validaciones pasan, enviar al backend
+    // ✅ El resto de validaciones (cliente activo, multas, etc.) 
+    // se hacen en el BACKEND y retornan mensajes específicos
+    
     try {
+      setLoading(true);
+      
       const body = new URLSearchParams();
       body.append("clientId", form.clientId);
       body.append("toolId", form.toolId);
@@ -246,28 +136,38 @@ export default function Loans() {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
+      // ✅ Éxito
       setForm({ clientId: "", toolId: "", dueDate: "" });
       await fetchAll();
       showSuccess("Prestamo creado exitosamente");
+      
     } catch (err) {
       console.error("Error al crear prestamo:", err);
-      // El interceptor ya mostro el mensaje del backend
+      
+      // ✅ MEJORADO: El interceptor ya mostró el mensaje del backend
+      // Solo necesitamos logearlo para debugging
+      if (err.userMessage) {
+        console.log("📋 Mensaje específico del backend:", err.userMessage);
+      }
+      
+      // ✅ FALLBACK: Si el interceptor no funcionó, mostrar manualmente
+      if (!err.userMessage && err.response?.data) {
+        const backendMessage = 
+          err.response.data.message || 
+          (typeof err.response.data === 'string' ? err.response.data : null);
+        
+        if (backendMessage) {
+          showError(backendMessage);
+        }
+      }
+      
+    } finally {
+      setLoading(false);
     }
   }
 
   function handleOpenReturnModal(loan) {
-    const clientId = loan.client?.id || loan.clientId || loan.client_id;
-    const toolId = loan.tool?.id || loan.toolId || loan.tool_id;
-    
-    const enrichedLoan = {
-      ...loan,
-      clientId: clientId,
-      toolId: toolId,
-      clientName: loan.client?.name || clientsMap.get(clientId)?.name || 'N/A',
-      toolName: loan.tool?.name || toolsMap.get(toolId)?.name || 'N/A',
-      replacementValue: loan.tool?.replacementValue || toolsMap.get(toolId)?.replacementValue || 0,
-    };
-    setSelectedLoan(enrichedLoan);
+    setSelectedLoan(loan);
     setReturnModalOpen(true);
   }
 
@@ -277,24 +177,20 @@ export default function Loans() {
   }
 
   async function handleReturnSuccess() {
+    handleCloseReturnModal();
     await fetchAll();
-    showSuccess("Prestamo devuelto exitosamente");
+    showSuccess("Herramienta devuelta exitosamente");
   }
 
   const Status = ({ value }) => {
-    const color =
-      value === "Vigente"
-        ? "#16a34a"
-        : value === "Atrasado"
-        ? "#d97706"
-        : value === "Devuelto"
-        ? "#64748b"
-        : "#9ca3af";
-
+    let bg = "#94a3b8";
+    if (value === "Vigente") bg = "#22c55e";
+    if (value === "Atrasado") bg = "#ef4444";
+    if (value === "Devuelto") bg = "#3b82f6";
     return (
       <span
         style={{
-          background: color,
+          background: bg,
           color: "#fff",
           padding: "2px 8px",
           borderRadius: 4,
@@ -337,11 +233,12 @@ export default function Loans() {
               style={inputStyle}
               value={form.clientId}
               onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+              disabled={loading}
             >
               <option value="">-- Seleccionar --</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.id} - {c.name}
+                  {c.id} - {c.name} {c.state !== 'Activo' && `(${c.state})`}
                 </option>
               ))}
             </select>
@@ -353,6 +250,7 @@ export default function Loans() {
               style={inputStyle}
               value={form.toolId}
               onChange={(e) => setForm({ ...form, toolId: e.target.value })}
+              disabled={loading}
             >
               <option value="">-- Seleccionar --</option>
               {tools
@@ -372,12 +270,14 @@ export default function Loans() {
               style={inputStyle}
               value={form.dueDate}
               onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+              disabled={loading}
+              min={new Date().toISOString().split('T')[0]}
             />
           </div>
 
           <div style={{ alignSelf: "end" }}>
             <button type="submit" style={primaryBtn} disabled={loading}>
-              Crear
+              {loading ? "Creando..." : "Crear"}
             </button>
           </div>
         </form>

@@ -23,9 +23,9 @@ import { setupErrorHandler } from "./http-common";
 function AppContent() {
   const { showError } = useSnackbar();
 
-  // CRÍTICO: Configurar el interceptor HTTP para usar el Snackbar
+  // 🔥 CRÍTICO: Configurar el interceptor HTTP para usar el Snackbar
   useEffect(() => {
-    console.log("🔧 Configurando interceptor HTTP con Snackbar");
+    console.log("✅ Configurando interceptor HTTP con Snackbar");
     setupErrorHandler(showError);
   }, [showError]);
 

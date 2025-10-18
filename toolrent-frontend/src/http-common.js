@@ -36,7 +36,7 @@ export const setupErrorHandler = (callback) => {
   console.log("✅ setupErrorHandler configurado");
 };
 
-// Interceptor de respuestas para errores HTTP - MEJORADO
+// ✅ MEJORADO: Interceptor de respuestas con mejor manejo de errores detallados
 http.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -48,7 +48,7 @@ http.interceptors.response.use(
     const status = error.response?.status;
     const backendData = error.response?.data;
     
-    // Intentar extraer el mensaje del backend de TODAS las formas posibles
+    // ✅ MEJORADO: Intentar extraer el mensaje del backend de TODAS las formas posibles
     let message = 
       backendData?.message ||           // Spring Boot: { message: "..." }
       backendData?.error ||              // Algunos frameworks: { error: "..." }
@@ -61,75 +61,111 @@ http.interceptors.response.use(
     
     console.log("💬 Mensaje extraido del backend:", message);
     
-    // Si el mensaje sigue siendo tecnico de Axios, mejorarlo
+    // ✅ NUEVO: Si el mensaje es de Spring Boot ResponseStatusException
+    // Spring devuelve: { "timestamp": "...", "status": 400, "error": "Bad Request", "message": "El mensaje real aquí", "path": "..." }
+    if (backendData && typeof backendData === 'object') {
+      // Priorizar el campo "message" de Spring Boot
+      if (backendData.message && backendData.message !== 'Bad Request') {
+        message = backendData.message;
+      }
+      // Si no, intentar con "error"
+      else if (backendData.error && backendData.error !== 'Bad Request') {
+        message = backendData.error;
+      }
+    }
+    
+    // ✅ MEJORADO: Preservar saltos de línea y formato del backend
     let userMessage = message;
     
-    if (message.includes("Request failed with status code") || 
-        message.includes("Network Error") ||
-        message === "Error desconocido") {
-      
+    // Solo mejorar mensajes técnicos genéricos, NO los mensajes específicos del backend
+    const isTechnicalError = 
+      message.includes("Request failed with status code") || 
+      message.includes("Network Error") ||
+      message === "Error desconocido" ||
+      message === "Bad Request" ||
+      message === "Internal Server Error";
+    
+    if (isTechnicalError) {
       // Mensajes genericos mejorados por codigo de error
       switch (status) {
         case 400:
-          userMessage = "Datos invalidos. Por favor verifica la informacion ingresada.";
+          userMessage = "Datos inválidos. Por favor verifica la información ingresada.";
           break;
         case 401:
-          userMessage = "Sesion expirada. Por favor inicia sesion nuevamente.";
+          userMessage = "Sesión expirada. Por favor inicia sesión nuevamente.";
           break;
         case 403:
-          userMessage = "No tienes permisos para realizar esta accion.";
+          userMessage = "No tienes permisos para realizar esta acción.";
           break;
         case 404:
           userMessage = "Recurso no encontrado.";
           break;
         case 409:
-          userMessage = "El recurso ya existe o esta en conflicto.";
+          userMessage = "El recurso ya existe o está en conflicto.";
           break;
         case 422:
-          userMessage = "Los datos enviados no son validos.";
+          userMessage = "Los datos enviados no son válidos.";
           break;
         case 500:
-          userMessage = "Error interno del servidor. Por favor intenta mas tarde.";
+          userMessage = "Error interno del servidor. Por favor intenta más tarde.";
           break;
         case 503:
           userMessage = "Servicio temporalmente no disponible.";
           break;
         default:
           if (message.includes("Network Error")) {
-            userMessage = "Error de conexion. Verifica que el servidor este funcionando.";
+            userMessage = "Error de conexión. Verifica que el servidor esté funcionando.";
           } else {
             userMessage = `Error ${status || 'desconocido'}`;
           }
       }
     }
+    // ✅ NUEVO: Si el mensaje viene del backend y es específico, usarlo tal cual
+    else {
+      // Preservar el mensaje exacto del backend (con saltos de línea, detalles, etc.)
+      userMessage = message;
+    }
     
-    // Agregar emoji segun el tipo de error
-    const emojiMap = {
-      400: "⚠️",
-      401: "🔒",
-      403: "⛔",
-      404: "❌",
-      409: "⚠️",
-      422: "⚠️",
-      500: "❌",
-      503: "⏳"
-    };
+    // ✅ MEJORADO: Agregar emoji solo si no es un mensaje largo/detallado del backend
+    const isDetailedMessage = userMessage.includes('\n') || userMessage.length > 100;
     
-    const emoji = emojiMap[status] || "⚠️";
-    userMessage = `${emoji} ${userMessage}`;
+    if (!isDetailedMessage) {
+      const emojiMap = {
+        400: "⚠️",
+        401: "🔒",
+        403: "⛔",
+        404: "❌",
+        409: "⚠️",
+        422: "⚠️",
+        500: "❌",
+        503: "⏳"
+      };
+      
+      const emoji = emojiMap[status] || "⚠️";
+      userMessage = `${emoji} ${userMessage}`;
+    }
     
     console.log("👤 Mensaje final para usuario:", userMessage);
+    
+    // ✅ MEJORADO: Crear objeto de error enriquecido
+    const enrichedError = {
+      ...error,
+      userMessage,           // Mensaje para mostrar al usuario
+      originalMessage: message, // Mensaje original del backend
+      status,                // Código HTTP
+      isDetailedMessage      // Flag para indicar si es mensaje detallado
+    };
     
     // Mostrar error en Snackbar si el callback esta configurado
     if (showErrorCallback) {
       showErrorCallback(userMessage);
     } else {
-      console.warn("⚠️ showErrorCallback NO configurado - error no se mostrara en UI");
+      console.warn("⚠️ showErrorCallback NO configurado - error no se mostrará en UI");
       console.warn("💡 Asegurate de llamar setupErrorHandler(showError) en App.jsx");
     }
     
-    // Rechazar la promesa para que el catch funcione
-    return Promise.reject(error);
+    // Rechazar la promesa con el error enriquecido
+    return Promise.reject(enrichedError);
   }
 );
 

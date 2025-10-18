@@ -1,4 +1,7 @@
 // src/components/KardexList.jsx
+// ✅ VERSIÓN ERP PROFESIONAL
+// Estilo: Columnas separadas Entrada/Salida/Saldo como SAP, Oracle, etc.
+
 import { useEffect, useMemo, useState } from 'react'
 import { useKeycloak } from '@react-keycloak/web'
 import Box from '@mui/material/Box'
@@ -16,47 +19,50 @@ import Paper from '@mui/material/Paper'
 import MenuItem from '@mui/material/MenuItem'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import TrendingDownIcon from '@mui/icons-material/TrendingDown'
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline'
 
 import kardexService from '../services/kardex.service'
 
-// Tipos de movimiento disponibles
 const MOVEMENT_TYPES = [
   { value: '', label: 'Todos' },
-  { value: 'INGRESO', label: 'Ingreso' },
+  { value: 'REGISTRO', label: 'Registro' },
   { value: 'PRESTAMO', label: 'Préstamo' },
   { value: 'DEVOLUCION', label: 'Devolución' },
   { value: 'BAJA', label: 'Baja' },
   { value: 'REPARACION', label: 'Reparación' },
 ]
 
-// Función para formatear fechas
+// Formatear fechas estilo ERP
 const formatDate = (dateString) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
   return date.toLocaleDateString('es-CL', {
-    year: 'numeric',
-    month: '2-digit',
     day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   })
 }
 
-// Función para obtener el color del chip según el tipo de movimiento
+// Colores según tipo de movimiento (estilo ERP)
 const getMovementColor = (type) => {
   switch (type) {
-    case 'INGRESO':
-      return 'success'
+    case 'REGISTRO':
+      return { bg: '#e8f5e9', text: '#2e7d32', label: 'Registro' }
     case 'PRESTAMO':
-      return 'warning'
+      return { bg: '#fff3e0', text: '#e65100', label: 'Préstamo' }
     case 'DEVOLUCION':
-      return 'info'
+      return { bg: '#e3f2fd', text: '#1565c0', label: 'Devolución' }
     case 'BAJA':
-      return 'error'
+      return { bg: '#ffebee', text: '#c62828', label: 'Baja' }
     case 'REPARACION':
-      return 'default'
+      return { bg: '#f3e5f5', text: '#6a1b9a', label: 'Reparación' }
     default:
-      return 'default'
+      return { bg: '#f5f5f5', text: '#616161', label: type }
   }
 }
 
@@ -68,18 +74,21 @@ const getToolLabel = (movement) => {
   if (toolId && toolName) {
     return `#${toolId} - ${toolName}`
   }
-
-  if (toolId) {
-    return `#${toolId}`
-  }
-
-  if (toolName) {
-    return toolName
-  }
-
+  if (toolId) return `#${toolId}`
+  if (toolName) return toolName
   return '-'
 }
 
+/**
+ * ✅ KARDEX ESTILO ERP PROFESIONAL
+ * 
+ * Características:
+ * - Columnas: Entrada | Salida | Saldo
+ * - Saldo acumulado en tiempo real
+ * - Colores según tipo de movimiento
+ * - Iconos para entradas/salidas
+ * - Diseño limpio y profesional
+ */
 export default function KardexList() {
   const { keycloak, initialized } = useKeycloak()
   const [movements, setMovements] = useState([])
@@ -91,23 +100,18 @@ export default function KardexList() {
   const [filterType, setFilterType] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [toolId, setToolId] = useState('')
+  const [toolSearch, setToolSearch] = useState('')
 
-  const isAuthenticated = useMemo(
-    () => keycloak?.authenticated,
-    [keycloak?.authenticated]
-  )
+  const isAuthenticated = useMemo(() => keycloak?.authenticated, [keycloak?.authenticated])
 
-  // Cargar todos los movimientos al inicio
   useEffect(() => {
     if (!initialized || !isAuthenticated) return
     loadAllMovements()
   }, [initialized, isAuthenticated])
 
-  // Aplicar filtros cada vez que cambian los movimientos o los filtros
   useEffect(() => {
     applyFilters()
-  }, [movements, filterType, startDate, endDate, toolId])
+  }, [movements, filterType, startDate, endDate, toolSearch])
 
   const loadAllMovements = async () => {
     try {
@@ -117,7 +121,7 @@ export default function KardexList() {
       setMovements(data)
     } catch (e) {
       console.error(e)
-      setError('No se pudieron cargar los movimientos del kardex.')
+      setError('No se pudieron cargar los movimientos.')
     } finally {
       setLoading(false)
     }
@@ -126,89 +130,77 @@ export default function KardexList() {
   const applyFilters = () => {
     let filtered = [...movements]
 
-    // Filtrar por tipo de movimiento
+    // Filtrar por tipo
     if (filterType) {
       filtered = filtered.filter((m) => m.movementType === filterType)
     }
 
-    // Filtrar por ID o nombre de herramienta
-    if (toolId) {
-      const searchTerm = toolId.toLowerCase()
+    // Filtrar por herramienta
+    if (toolSearch) {
+      const searchTerm = toolSearch.toLowerCase()
       filtered = filtered.filter((m) => {
-        const tool = m.tool || {}
-        const toolIdentifier = tool.id ?? m.toolId
-        const toolName = tool.name ?? m.toolName
-
-        const idMatches =
-          toolIdentifier != null && toolIdentifier.toString().includes(toolId)
-        const nameMatches =
-          typeof toolName === 'string' && toolName.toLowerCase().includes(searchTerm)
-
-        return idMatches || nameMatches
+        const label = getToolLabel(m).toLowerCase()
+        return label.includes(searchTerm)
       })
     }
 
-    // Filtrar por rango de fechas
+    // Filtrar por fechas
     if (startDate) {
       const start = new Date(startDate)
-      filtered = filtered.filter((m) => new Date(m.movementDate) >= start)
+      filtered = filtered.filter((m) => {
+        const movDate = new Date(m.movementDate)
+        return movDate >= start
+      })
     }
+
     if (endDate) {
       const end = new Date(endDate)
-      end.setHours(23, 59, 59, 999) // Incluir todo el día final
-      filtered = filtered.filter((m) => new Date(m.movementDate) <= end)
+      end.setHours(23, 59, 59)
+      filtered = filtered.filter((m) => {
+        const movDate = new Date(m.movementDate)
+        return movDate <= end
+      })
     }
 
     setFilteredMovements(filtered)
-  }
-
-  const handleSearchByDateRange = async () => {
-    if (!startDate || !endDate) {
-      setError('Debe ingresar fecha de inicio y fecha de fin')
-      return
-    }
-
-    try {
-      setLoading(true)
-      setError('')
-      const data = await kardexService.getMovementsByDateRange(startDate, endDate)
-      setMovements(data)
-    } catch (e) {
-      console.error(e)
-      setError('Error al buscar por rango de fechas')
-    } finally {
-      setLoading(false)
-    }
   }
 
   const handleClearFilters = () => {
     setFilterType('')
     setStartDate('')
     setEndDate('')
-    setToolId('')
-    loadAllMovements()
+    setToolSearch('')
   }
 
-  if (!initialized || !isAuthenticated) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Typography>Cargando...</Typography>
-      </Box>
-    )
+  // ✅ CALCULAR SALDO ACUMULADO (estilo ERP)
+  const calculateRunningBalance = () => {
+    let balance = 0
+    return filteredMovements.map((movement) => {
+      balance += movement.quantity || 0
+      return {
+        ...movement,
+        runningBalance: balance,
+      }
+    })
   }
+
+  const movementsWithBalance = calculateRunningBalance()
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>
-        Kardex - Historial de Movimientos
+      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#1976d2' }}>
+        📊 Kardex - Historial de Movimientos
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Sistema de control de inventario • Entrada/Salida/Saldo
       </Typography>
 
-      {/* Sección de Filtros */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="subtitle2" gutterBottom>
-          Filtros
+      {/* Filtros */}
+      <Paper sx={{ p: 2, mb: 3, bgcolor: '#fafafa' }}>
+        <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+          🔍 Filtros
         </Typography>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField
               select
@@ -227,12 +219,12 @@ export default function KardexList() {
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField
-              label="Buscar Herramienta (ID o Nombre)"
-              value={toolId}
-              onChange={(e) => setToolId(e.target.value)}
+              label="Buscar Herramienta"
+              value={toolSearch}
+              onChange={(e) => setToolSearch(e.target.value)}
               fullWidth
               size="small"
-              placeholder="Ej: Martillo o 1"
+              placeholder="ID o Nombre"
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
@@ -262,78 +254,188 @@ export default function KardexList() {
               variant="outlined"
               onClick={handleClearFilters}
               fullWidth
-              size="small"
               sx={{ height: '40px' }}
             >
-              Limpiar Filtros
+              Limpiar
             </Button>
           </Grid>
         </Grid>
       </Paper>
 
-      {/* Mensaje de error */}
+      {/* Error */}
       {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
+        <Typography color="error" sx={{ mb: 2, bgcolor: '#ffebee', p: 2, borderRadius: 1 }}>
           {error}
         </Typography>
       )}
 
-      {/* Indicador de carga */}
+      {/* Loading */}
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
           <CircularProgress />
         </Box>
       )}
 
-      {/* Tabla de Movimientos */}
-      <TableContainer component={Paper}>
+      {/* Tabla estilo ERP */}
+      <TableContainer component={Paper} sx={{ boxShadow: 3 }}>
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>ID</TableCell>
-              <TableCell>Tipo</TableCell>
-              <TableCell>Herramienta</TableCell>
-              <TableCell>Cantidad</TableCell>
-              <TableCell>Usuario</TableCell>
-              <TableCell>Fecha</TableCell>
-              <TableCell>Observaciones</TableCell>
+            <TableRow sx={{ bgcolor: '#1976d2' }}>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>ID</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>Fecha/Hora</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>Tipo</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>Herramienta</TableCell>
+              <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', bgcolor: '#2e7d32' }}>
+                📥 Entrada
+              </TableCell>
+              <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', bgcolor: '#c62828' }}>
+                📤 Salida
+              </TableCell>
+              <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem', bgcolor: '#1565c0' }}>
+                💼 Saldo
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>Usuario</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>Observaciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredMovements.length === 0 && !loading ? (
+            {movementsWithBalance.length === 0 && !loading ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   No hay movimientos para mostrar
                 </TableCell>
               </TableRow>
             ) : (
-              filteredMovements.map((movement) => (
-                <TableRow key={movement.id}>
-                  <TableCell>{movement.id}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={movement.movementType}
-                      color={getMovementColor(movement.movementType)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{getToolLabel(movement)}</TableCell>
-                  <TableCell>{movement.quantity}</TableCell>
-                  <TableCell>{movement.username || '-'}</TableCell>
-                  <TableCell>{formatDate(movement.movementDate)}</TableCell>
-                  <TableCell>{movement.observations || '-'}</TableCell>
-                </TableRow>
-              ))
+              movementsWithBalance.map((movement, index) => {
+                const qty = movement.quantity || 0
+                const isEntry = qty > 0
+                const colors = getMovementColor(movement.movementType)
+
+                return (
+                  <TableRow 
+                    key={movement.id}
+                    sx={{ 
+                      '&:hover': { bgcolor: '#f5f5f5' },
+                      bgcolor: index % 2 === 0 ? 'white' : '#fafafa'
+                    }}
+                  >
+                    {/* ID */}
+                    <TableCell sx={{ fontWeight: 500 }}>{movement.id}</TableCell>
+
+                    {/* Fecha/Hora */}
+                    <TableCell sx={{ fontSize: '0.85rem' }}>
+                      {formatDate(movement.movementDate)}
+                    </TableCell>
+
+                    {/* Tipo (con color) */}
+                    <TableCell>
+                      <Chip
+                        label={colors.label}
+                        size="small"
+                        sx={{
+                          bgcolor: colors.bg,
+                          color: colors.text,
+                          fontWeight: 600,
+                          fontSize: '0.75rem',
+                        }}
+                      />
+                    </TableCell>
+
+                    {/* Herramienta */}
+                    <TableCell sx={{ fontWeight: 500 }}>
+                      {getToolLabel(movement)}
+                    </TableCell>
+
+                    {/* ENTRADA (verde) */}
+                    <TableCell 
+                      align="center" 
+                      sx={{ 
+                        bgcolor: isEntry ? '#e8f5e9' : 'transparent',
+                        fontWeight: isEntry ? 700 : 400,
+                        color: isEntry ? '#2e7d32' : '#bdbdbd',
+                        fontSize: '1rem',
+                      }}
+                    >
+                      {isEntry ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                          <AddCircleOutlineIcon sx={{ fontSize: '1.2rem' }} />
+                          {Math.abs(qty)}
+                        </Box>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+
+                    {/* SALIDA (rojo) */}
+                    <TableCell 
+                      align="center" 
+                      sx={{ 
+                        bgcolor: !isEntry && qty !== 0 ? '#ffebee' : 'transparent',
+                        fontWeight: !isEntry && qty !== 0 ? 700 : 400,
+                        color: !isEntry && qty !== 0 ? '#c62828' : '#bdbdbd',
+                        fontSize: '1rem',
+                      }}
+                    >
+                      {!isEntry && qty !== 0 ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                          <RemoveCircleOutlineIcon sx={{ fontSize: '1.2rem' }} />
+                          {Math.abs(qty)}
+                        </Box>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+
+                    {/* SALDO (azul) */}
+                    <TableCell 
+                      align="center" 
+                      sx={{ 
+                        bgcolor: '#e3f2fd',
+                        fontWeight: 700,
+                        color: movement.runningBalance >= 0 ? '#1565c0' : '#c62828',
+                        fontSize: '1.1rem',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                        {movement.runningBalance >= 0 ? (
+                          <TrendingUpIcon sx={{ fontSize: '1.2rem' }} />
+                        ) : (
+                          <TrendingDownIcon sx={{ fontSize: '1.2rem' }} />
+                        )}
+                        {movement.runningBalance}
+                      </Box>
+                    </TableCell>
+
+                    {/* Usuario */}
+                    <TableCell sx={{ fontSize: '0.85rem' }}>
+                      {movement.username || '-'}
+                    </TableCell>
+
+                    {/* Observaciones */}
+                    <TableCell sx={{ fontSize: '0.85rem', maxWidth: 200 }}>
+                      {movement.observations || '-'}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      {/* Resumen de movimientos filtrados */}
-      <Box sx={{ mt: 2 }}>
+      {/* Resumen */}
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="body2" color="text.secondary">
           Mostrando {filteredMovements.length} de {movements.length} movimientos
         </Typography>
+        
+        {movementsWithBalance.length > 0 && (
+          <Paper sx={{ px: 3, py: 1, bgcolor: '#e3f2fd' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1565c0' }}>
+              Saldo Final: {movementsWithBalance[movementsWithBalance.length - 1]?.runningBalance || 0} unidades
+            </Typography>
+          </Paper>
+        )}
       </Box>
     </Box>
   )

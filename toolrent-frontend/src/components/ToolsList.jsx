@@ -1,4 +1,6 @@
 // src/components/ToolsList.jsx
+// ✅ VERSIÓN SIMPLIFICADA - Sin errores de imports
+
 import { useEffect, useMemo, useState } from 'react'
 import { useKeycloak } from '@react-keycloak/web'
 import Box from '@mui/material/Box'
@@ -23,6 +25,7 @@ import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
 import DeleteIcon from '@mui/icons-material/Delete'
 import Tooltip from '@mui/material/Tooltip'
+import CircularProgress from '@mui/material/CircularProgress'
 
 import toolService from '../services/tool.service'
 
@@ -50,7 +53,6 @@ export default function ToolsList() {
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   
-  // Estado para el diálogo de confirmación
   const [openDialog, setOpenDialog] = useState(false)
   const [selectedTool, setSelectedTool] = useState(null)
 
@@ -60,7 +62,6 @@ export default function ToolsList() {
     [keycloak]
   )
 
-  // Cargar herramientas
   useEffect(() => {
     if (!initialized || !isAuthenticated) return
     loadTools()
@@ -74,7 +75,7 @@ export default function ToolsList() {
       setTools(rows)
     } catch (e) {
       console.error(e)
-      setError('No se pudieron cargar las herramientas.')
+      setError('❌ No se pudieron cargar las herramientas.')
     } finally {
       setLoading(false)
     }
@@ -92,44 +93,83 @@ export default function ToolsList() {
     return 'default'
   }
 
+  const formatCurrency = (value) => {
+    if (!value) return '$0'
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      minimumFractionDigits: 0
+    }).format(value)
+  }
+
   const onCreate = async () => {
+    setError('')
+    setSuccessMsg('')
+
+    // ✅ Validación de campos obligatorios
+    if (!form.name || !form.category) {
+      setError('⚠️ Completa Nombre y Categoría.')
+      return
+    }
+
+    const replacementValue = Number(form.replacementValue || 0)
+    const stock = Number(form.stock || 0)
+
+    // ✅ Validación: Valor de reposición debe ser mayor a 0
+    if (!form.replacementValue || replacementValue <= 0) {
+      setError('⚠️ El Valor de Reposición debe ser mayor a 0.')
+      return
+    }
+
+    // ✅ Validación: Stock debe ser mayor a 0
+    if (!form.stock || stock <= 0) {
+      setError('⚠️ El Stock debe ser mayor a 0.')
+      return
+    }
+
+    if (replacementValue < 0) {
+      setError('⚠️ Valor de reposición no puede ser negativo.')
+      return
+    }
+
+    if (stock < 0) {
+      setError('⚠️ Stock no puede ser negativo.')
+      return
+    }
+
     try {
       setLoading(true)
-      setError('')
-      setSuccessMsg('')
-      
       await toolService.create({
         name: form.name,
         category: form.category,
         status: form.status,
-        replacementValue: Number(form.replacementValue || 0),
-        stock: Number(form.stock || 0),
+        replacementValue,
+        stock,
       })
 
       setForm({ ...emptyForm })
-      setSuccessMsg('Herramienta creada exitosamente')
+      setSuccessMsg('✅ Herramienta creada exitosamente')
+      setTimeout(() => setSuccessMsg(''), 3000)
       await loadTools()
     } catch (e) {
       console.error(e)
-      setError(e.response?.data?.message || 'No se pudo crear la herramienta.')
+      const backendMsg = e.response?.data?.message || ''
+      setError(`❌ No se pudo crear. ${backendMsg}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Abrir diálogo de confirmación
   const handleOpenDialog = (tool) => {
     setSelectedTool(tool)
     setOpenDialog(true)
   }
 
-  // Cerrar diálogo
   const handleCloseDialog = () => {
     setOpenDialog(false)
     setSelectedTool(null)
   }
 
-  // Confirmar dar de baja
   const handleConfirmDecommission = async () => {
     if (!selectedTool) return
 
@@ -140,29 +180,27 @@ export default function ToolsList() {
       
       await toolService.decommission(selectedTool.id)
       
-      setSuccessMsg(`Herramienta "${selectedTool.name}" dada de baja exitosamente`)
+      setSuccessMsg(`✅ Herramienta "${selectedTool.name}" dada de baja`)
+      setTimeout(() => setSuccessMsg(''), 3000)
       handleCloseDialog()
       await loadTools()
     } catch (e) {
       console.error(e)
       const errorMsg = e.response?.data?.message || 
                       e.response?.data?.error || 
-                      'No se pudo dar de baja la herramienta.'
-      setError(errorMsg)
+                      'No se pudo dar de baja.'
+      setError(`❌ ${errorMsg}`)
       handleCloseDialog()
     } finally {
       setLoading(false)
     }
   }
 
-  // Verificar si se puede dar de baja una herramienta
   const canDecommission = (tool) => {
     if (!isAdmin) return false
     if (!tool) return false
     
     const status = tool.status?.toLowerCase() || ''
-    
-    // No se puede dar de baja si está prestada o ya está dada de baja
     if (status.includes('prestada')) return false
     if (status.includes('baja')) return false
     
@@ -172,207 +210,217 @@ export default function ToolsList() {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>
-        Herramientas
+        Gestión de Herramientas
       </Typography>
 
-      {/* Formulario de creación (solo Admin) */}
+      {/* Formulario (solo Admin) */}
       {isAdmin && (
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12, sm: 3 }}>
-            <TextField
-              label="Nombre"
-              name="name"
-              value={form.name}
-              onChange={onChange}
-              fullWidth
-              size="small"
-            />
+        <>
+          <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+            Crear Nueva Herramienta
+          </Typography>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField
+                label="Nombre *"
+                name="name"
+                value={form.name}
+                onChange={onChange}
+                fullWidth
+                size="small"
+                disabled={loading}
+                placeholder="Taladro Bosch"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField
+                label="Categoría *"
+                name="category"
+                value={form.category}
+                onChange={onChange}
+                fullWidth
+                size="small"
+                disabled={loading}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 2 }}>
+              <TextField
+                select
+                label="Estado"
+                name="status"
+                value={form.status}
+                onChange={onChange}
+                fullWidth
+                size="small"
+                disabled={loading}
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 2 }}>
+              <TextField
+                label="Valor Reposición *"
+                name="replacementValue"
+                value={form.replacementValue}
+                onChange={onChange}
+                fullWidth
+                size="small"
+                type="number"
+                disabled={loading}
+                required
+                placeholder="50000"
+                helperText="Obligatorio"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 1 }}>
+              <TextField
+                label="Stock *"
+                name="stock"
+                value={form.stock}
+                onChange={onChange}
+                fullWidth
+                size="small"
+                type="number"
+                disabled={loading}
+                required
+                placeholder="1"
+                helperText="Obligatorio"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 1 }}>
+              <Button
+                variant="contained"
+                onClick={onCreate}
+                disabled={loading}
+                fullWidth
+                sx={{ height: '40px' }}
+              >
+                {loading ? '...' : 'CREAR'}
+              </Button>
+            </Grid>
           </Grid>
-          <Grid size={{ xs: 12, sm: 3 }}>
-            <TextField
-              label="Categoría"
-              name="category"
-              value={form.category}
-              onChange={onChange}
-              fullWidth
-              size="small"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 2 }}>
-            <TextField
-              select
-              label="Estado"
-              name="status"
-              value={form.status}
-              onChange={onChange}
-              fullWidth
-              size="small"
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 2 }}>
-            <TextField
-              label="Valor Reposición"
-              name="replacementValue"
-              value={form.replacementValue}
-              onChange={onChange}
-              fullWidth
-              size="small"
-              type="number"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 2 }}>
-            <TextField
-              label="Stock"
-              name="stock"
-              value={form.stock}
-              onChange={onChange}
-              fullWidth
-              size="small"
-              type="number"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 2 }}>
-            <Button
-              variant="contained"
-              onClick={onCreate}
-              disabled={loading}
-              fullWidth
-            >
-              CREAR
-            </Button>
-          </Grid>
-        </Grid>
+        </>
       )}
 
       {/* Mensajes */}
       {error && (
-        <Typography color="error" sx={{ mb: 1 }}>
+        <Typography color="error" sx={{ mb: 2, bgcolor: '#ffebee', p: 2, borderRadius: 1 }}>
           {error}
         </Typography>
       )}
       {successMsg && (
-        <Typography color="success.main" sx={{ mb: 1 }}>
+        <Typography sx={{ mb: 2, bgcolor: '#e8f5e9', p: 2, borderRadius: 1, color: '#2e7d32' }}>
           {successMsg}
         </Typography>
       )}
 
-      {/* Tabla de herramientas */}
-      <TableContainer component={Paper}>
+      {/* Tabla */}
+      <TableContainer component={Paper} sx={{ mt: 2 }}>
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>ID</TableCell>
-              <TableCell>Nombre</TableCell>
-              <TableCell>Categoría</TableCell>
-              <TableCell>Valor Reposición</TableCell>
-              <TableCell>Stock</TableCell>
-              <TableCell>Estado</TableCell>
-              {isAdmin && <TableCell align="center">Acciones</TableCell>}
+            <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+              <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Nombre</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Categoría</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Valor</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Stock</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Estado</TableCell>
+              {isAdmin && <TableCell align="center" sx={{ fontWeight: 'bold' }}>Acciones</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
-            {tools.map((tool) => (
-              <TableRow key={tool.id ?? `${tool.name}-${tool.category}`}>
-                <TableCell>{tool.id}</TableCell>
-                <TableCell>{tool.name}</TableCell>
-                <TableCell>{tool.category}</TableCell>
-                <TableCell>${tool.replacementValue?.toLocaleString()}</TableCell>
-                <TableCell>{tool.stock}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={tool.status}
-                    color={colorFor(tool.status)}
-                    size="small"
-                  />
+            {loading && tools.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={isAdmin ? 7 : 6} align="center">
+                  <CircularProgress size={24} sx={{ mr: 1 }} />
+                  Cargando...
                 </TableCell>
-                {isAdmin && (
-                  <TableCell align="center">
-                    {canDecommission(tool) ? (
-                      <Tooltip title="Dar de baja">
-                        <IconButton
-                          color="error"
-                          size="small"
-                          onClick={() => handleOpenDialog(tool)}
-                          disabled={loading}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    ) : (
-                      <Tooltip title={
-                        tool.status?.toLowerCase().includes('prestada') 
-                          ? 'No se puede dar de baja (prestada)'
-                          : tool.status?.toLowerCase().includes('baja')
-                          ? 'Ya está dada de baja'
-                          : 'No disponible'
-                      }>
-                        <span>
+              </TableRow>
+            ) : tools.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={isAdmin ? 7 : 6} align="center">
+                  No hay herramientas
+                </TableCell>
+              </TableRow>
+            ) : (
+              tools.map((tool) => (
+                <TableRow key={tool.id ?? `${tool.name}-${tool.category}`} hover>
+                  <TableCell>{tool.id}</TableCell>
+                  <TableCell>{tool.name}</TableCell>
+                  <TableCell>{tool.category}</TableCell>
+                  <TableCell>{formatCurrency(tool.replacementValue)}</TableCell>
+                  <TableCell>{tool.stock}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={tool.status}
+                      color={colorFor(tool.status)}
+                      size="small"
+                    />
+                  </TableCell>
+                  {isAdmin && (
+                    <TableCell align="center">
+                      {canDecommission(tool) ? (
+                        <Tooltip title="Dar de baja">
                           <IconButton
                             color="error"
                             size="small"
-                            disabled
+                            onClick={() => handleOpenDialog(tool)}
+                            disabled={loading}
                           >
                             <DeleteIcon />
                           </IconButton>
-                        </span>
-                      </Tooltip>
-                    )}
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-            {!loading && tools.length === 0 && (
-              <TableRow>
-                <TableRow>
-                  <TableCell colSpan={isAdmin ? 7 : 6} align="center">
-                    Sin datos
-                  </TableCell>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title={
+                          tool.status?.toLowerCase().includes('prestada') 
+                            ? 'No se puede (prestada)'
+                            : 'Ya dada de baja'
+                        }>
+                          <span>
+                            <IconButton color="error" size="small" disabled>
+                              <DeleteIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
-              </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      {/* Diálogo de confirmación */}
-      <Dialog
-        open={openDialog}
-        onClose={handleCloseDialog}
-        aria-labelledby="alert-dialog-title"
-        aria-describedby="alert-dialog-description"
-      >
-        <DialogTitle id="alert-dialog-title">
-          Confirmar dar de baja
-        </DialogTitle>
+      {/* Dialog confirmación */}
+      <Dialog open={openDialog} onClose={handleCloseDialog}>
+        <DialogTitle>Confirmar dar de baja</DialogTitle>
         <DialogContent>
-          <DialogContentText id="alert-dialog-description">
-            ¿Está seguro que desea dar de baja la herramienta "{selectedTool?.name}"?
+          <DialogContentText>
+            ¿Dar de baja <strong>"{selectedTool?.name}"</strong>?
             <br /><br />
             Esta acción:
             <ul>
               <li>Cambiará el estado a "Dada de baja"</li>
               <li>Establecerá el stock en 0</li>
-              <li>No se podrá revertir fácilmente</li>
             </ul>
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="inherit">
+          <Button onClick={handleCloseDialog} disabled={loading}>
             Cancelar
           </Button>
           <Button 
             onClick={handleConfirmDecommission} 
             color="error" 
             variant="contained"
-            autoFocus
+            disabled={loading}
           >
-            Dar de baja
+            {loading ? 'Dando de baja...' : 'Dar de baja'}
           </Button>
         </DialogActions>
       </Dialog>

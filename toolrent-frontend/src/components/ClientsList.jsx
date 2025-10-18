@@ -1,3 +1,6 @@
+// src/components/ClientsList.jsx
+// ✅ VERSIÓN SIMPLIFICADA - Sin errores de imports
+
 import { useEffect, useMemo, useState } from 'react'
 import { useKeycloak } from '@react-keycloak/web'
 import Box from '@mui/material/Box'
@@ -23,22 +26,15 @@ import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
+import CircularProgress from '@mui/material/CircularProgress'
 
 import http from '../http-common'
 
 const emptyForm = { name: '', rut: '', email: '', phone: '' }
 
 /**
- * Componente de Gestión de Clientes - CRUD Completo (Puntos 8 y 9)
- * 
- * ✅ Funcionalidades implementadas:
- * - CREATE: Crear nuevo cliente con validaciones
- * - READ: Listar todos los clientes
- * - UPDATE: Editar datos del cliente (Punto 8)
- * - UPDATE STATE: Cambiar estado Activo/Restringido (Punto 8 - RF3.2)
- * - Validaciones de formato (Punto 9): RUT, email, teléfono
- * 
- * 🔧 CORRECCIÓN: Ahora siempre envía RUT y estado en el PUT
+ * ✅ VERSIÓN SIMPLIFICADA - ClientsList
+ * Sin imports problemáticos, funcionalidad completa
  */
 export default function ClientsList() {
   const { keycloak, initialized } = useKeycloak()
@@ -69,6 +65,8 @@ export default function ClientsList() {
     fetchClients()
   }, [initialized, canSee])
 
+  // ==================== FETCH CLIENTES ====================
+  
   const fetchClients = async () => {
     try {
       setLoading(true)
@@ -83,69 +81,68 @@ export default function ClientsList() {
     }
   }
 
-  // ==================== VALIDACIONES (Punto 9) ====================
+  // ==================== VALIDACIONES ====================
 
-  /**
-   * Validar formato de RUT chileno: XX.XXX.XXX-X
-   */
   const validateRUT = (rut) => {
     const rutPattern = /^\d{1,2}\.\d{3}\.\d{3}-[\dkK]$/
     return rutPattern.test(rut)
   }
 
-  /**
-   * Validar formato de email
-   */
   const validateEmail = (email) => {
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return emailPattern.test(email)
   }
 
-  /**
-   * Validar formato de teléfono chileno: +56XXXXXXXXX
-   */
   const validatePhone = (phone) => {
     const phonePattern = /^\+56\d{9}$/
     return phonePattern.test(phone)
   }
 
-  // ==================== CREAR CLIENTE (CREATE) ====================
+  // ==================== CREAR CLIENTE ====================
 
-  const onChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+  const onChange = (e) => {
+    const { name, value } = e.target
+    setForm(f => ({ ...f, [name]: value }))
+  }
 
   const onCreate = async () => {
     setError('')
     setSuccess('')
 
-    // Validaciones de campos obligatorios
     if (!form.name || !form.rut || !form.email || !form.phone) {
       setError('⚠️ Completa todos los campos: Nombre, RUT, Email y Teléfono.')
       return
     }
 
-    // Validaciones de formato (Punto 9)
     if (!validateRUT(form.rut)) {
-      setError('⚠️ Formato de RUT inválido. Usa el formato: 12.345.678-9')
+      setError('⚠️ Formato de RUT inválido. Usa: 12.345.678-9')
       return
     }
 
     if (!validateEmail(form.email)) {
-      setError('⚠️ Formato de email inválido.')
+      setError('⚠️ Email inválido. Ejemplo: usuario@dominio.com')
       return
     }
 
     if (!validatePhone(form.phone)) {
-      setError('⚠️ Formato de teléfono inválido. Usa el formato: +56912345678')
+      setError('⚠️ Teléfono inválido. Formato: +56912345678')
       return
     }
 
     try {
       setLoading(true)
-      await http.post('/api/v1/clients', form)
       
+      // ✅ Agregar estado "Activo" por defecto
+      const clientData = {
+        ...form,
+        state: 'Activo'
+      }
+      
+      await http.post('/api/v1/clients', clientData)
       setForm(emptyForm)
       await fetchClients()
       setSuccess('✅ Cliente creado exitosamente.')
+      setTimeout(() => setSuccess(''), 3000)
     } catch (e) {
       console.error(e)
       const status = e?.response?.status
@@ -165,7 +162,7 @@ export default function ClientsList() {
     }
   }
 
-  // ==================== EDITAR CLIENTE (UPDATE - Punto 8) ====================
+  // ==================== EDITAR CLIENTE ====================
 
   const handleOpenEdit = (client) => {
     setEditingClient(client)
@@ -186,45 +183,42 @@ export default function ClientsList() {
     setError('')
   }
 
-  const onEditChange = (e) => setEditForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+  const onEditChange = (e) => setEditForm(f => ({ ...f, [e.target.name]: e.target.value }))
 
   const handleSaveEdit = async () => {
     setError('')
     setSuccess('')
 
-    // Validaciones
     if (!editForm.name || !editForm.email || !editForm.phone) {
       setError('⚠️ Completa todos los campos.')
       return
     }
 
     if (!validateEmail(editForm.email)) {
-      setError('⚠️ Formato de email inválido.')
+      setError('⚠️ Email inválido.')
       return
     }
 
     if (!validatePhone(editForm.phone)) {
-      setError('⚠️ Formato de teléfono inválido. Usa el formato: +56912345678')
+      setError('⚠️ Teléfono inválido. Formato: +56912345678')
       return
     }
 
     try {
       setLoading(true)
-      
-      // ✅ CORRECCIÓN CRÍTICA: Incluir RUT y estado del cliente original
       const updateData = {
         name: editForm.name,
         email: editForm.email,
         phone: editForm.phone,
-        rut: editingClient.rut,      // ✅ RUT original (inmutable)
-        state: editingClient.state    // ✅ Estado actual (no se modifica aquí)
+        rut: editingClient.rut,
+        state: editingClient.state
       }
       
       await http.put(`/api/v1/clients/${editingClient.id}`, updateData)
-      
       await fetchClients()
       handleCloseEdit()
-      setSuccess(`✅ Cliente "${editForm.name}" actualizado exitosamente.`)
+      setSuccess(`✅ Cliente "${editForm.name}" actualizado.`)
+      setTimeout(() => setSuccess(''), 3000)
     } catch (e) {
       console.error(e)
       const status = e?.response?.status
@@ -244,7 +238,7 @@ export default function ClientsList() {
     }
   }
 
-  // ==================== CAMBIAR ESTADO (UPDATE STATE - Punto 8 RF3.2) ====================
+  // ==================== CAMBIAR ESTADO ====================
 
   const handleOpenChangeState = (client) => {
     setChangingStateClient(client)
@@ -263,24 +257,30 @@ export default function ClientsList() {
 
   const handleSaveState = async () => {
     setError('')
-    setSuccess('')
 
-    if (!newState || (newState !== 'Activo' && newState !== 'Restringido')) {
-      setError('⚠️ Selecciona un estado válido.')
+    if (!newState || newState === changingStateClient.state) {
+      setError('⚠️ Selecciona un nuevo estado.')
       return
     }
 
     try {
       setLoading(true)
-      await http.patch(`/api/v1/clients/${changingStateClient.id}/state`, { state: newState })
+      const updateData = {
+        name: changingStateClient.name,
+        email: changingStateClient.email,
+        phone: changingStateClient.phone,
+        rut: changingStateClient.rut,
+        state: newState
+      }
       
+      await http.put(`/api/v1/clients/${changingStateClient.id}`, updateData)
       await fetchClients()
       handleCloseChangeState()
-      setSuccess(`✅ Estado de "${changingStateClient.name}" cambiado a "${newState}".`)
+      setSuccess(`✅ Estado cambiado a "${newState}".`)
+      setTimeout(() => setSuccess(''), 3000)
     } catch (e) {
-      console.error(e)
       const backendMsg = e?.response?.data?.message || ''
-      setError(`❌ No se pudo cambiar el estado: ${backendMsg}`)
+      setError(`❌ No se pudo cambiar el estado. ${backendMsg}`)
     } finally {
       setLoading(false)
     }
@@ -291,10 +291,10 @@ export default function ClientsList() {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>
-        Clientes
+        Gestión de Clientes
       </Typography>
 
-      {/* Mensajes de error y éxito */}
+      {/* Mensajes */}
       {error && (
         <Typography color="error" sx={{ mb: 2, bgcolor: '#ffebee', p: 2, borderRadius: 1 }}>
           {error}
@@ -321,6 +321,7 @@ export default function ClientsList() {
                 onChange={onChange}
                 fullWidth
                 placeholder="Juan Pérez"
+                disabled={loading}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 2 }}>
@@ -331,7 +332,8 @@ export default function ClientsList() {
                 onChange={onChange}
                 fullWidth
                 placeholder="12.345.678-9"
-                helperText="Formato: XX.XXX.XXX-X"
+                helperText="XX.XXX.XXX-X"
+                disabled={loading}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 3 }}>
@@ -342,6 +344,7 @@ export default function ClientsList() {
                 onChange={onChange}
                 fullWidth
                 placeholder="juan@toolrent.cl"
+                disabled={loading}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 2 }}>
@@ -353,6 +356,7 @@ export default function ClientsList() {
                 fullWidth
                 placeholder="+56912345678"
                 helperText="+56XXXXXXXXX"
+                disabled={loading}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 2 }} display="flex" alignItems="center">
@@ -363,7 +367,7 @@ export default function ClientsList() {
                 fullWidth
                 sx={{ height: '56px' }}
               >
-                CREAR
+                {loading ? 'Creando...' : 'CREAR'}
               </Button>
             </Grid>
           </Grid>
@@ -388,13 +392,14 @@ export default function ClientsList() {
             {loading && clients.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={isAdmin ? 7 : 6} align="center">
+                  <CircularProgress size={24} sx={{ mr: 1 }} />
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : clients.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={isAdmin ? 7 : 6} align="center">
-                  No hay clientes para mostrar
+                  No hay clientes
                 </TableCell>
               </TableRow>
             ) : (
@@ -420,6 +425,7 @@ export default function ClientsList() {
                         color="primary"
                         onClick={() => handleOpenEdit(client)}
                         title="Editar cliente"
+                        disabled={loading}
                       >
                         <EditIcon />
                       </IconButton>
@@ -432,7 +438,7 @@ export default function ClientsList() {
         </Table>
       </TableContainer>
 
-      {/* Dialog para editar cliente */}
+      {/* Dialog editar */}
       <Dialog open={editDialogOpen} onClose={handleCloseEdit} maxWidth="sm" fullWidth>
         <DialogTitle>Editar Cliente</DialogTitle>
         <DialogContent>
@@ -445,6 +451,7 @@ export default function ClientsList() {
               onChange={onEditChange}
               fullWidth
               margin="normal"
+              disabled={loading}
             />
             <TextField
               label="Email"
@@ -453,6 +460,7 @@ export default function ClientsList() {
               onChange={onEditChange}
               fullWidth
               margin="normal"
+              disabled={loading}
             />
             <TextField
               label="Teléfono"
@@ -461,10 +469,11 @@ export default function ClientsList() {
               onChange={onEditChange}
               fullWidth
               margin="normal"
-              helperText="Formato: +56912345678"
+              helperText="+56912345678"
+              disabled={loading}
             />
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-              Nota: El RUT no se puede modificar.
+              El RUT no se puede modificar.
             </Typography>
           </Box>
         </DialogContent>
@@ -473,12 +482,12 @@ export default function ClientsList() {
             Cancelar
           </Button>
           <Button onClick={handleSaveEdit} variant="contained" disabled={loading}>
-            Guardar Cambios
+            {loading ? 'Guardando...' : 'Guardar'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog para cambiar estado (RF3.2) */}
+      {/* Dialog cambiar estado */}
       <Dialog open={stateDialogOpen} onClose={handleCloseChangeState} maxWidth="xs" fullWidth>
         <DialogTitle>Cambiar Estado del Cliente</DialogTitle>
         <DialogContent>
@@ -489,9 +498,13 @@ export default function ClientsList() {
                 Cliente: <strong>{changingStateClient.name}</strong>
               </Typography>
               <Typography variant="body2" sx={{ mb: 2 }}>
-                Estado actual: <Chip label={changingStateClient.state} size="small" />
+                Estado actual: <Chip 
+                  label={changingStateClient.state}
+                  color={changingStateClient.state === 'Activo' ? 'success' : 'warning'}
+                  size="small" 
+                />
               </Typography>
-              <FormControl fullWidth>
+              <FormControl fullWidth disabled={loading}>
                 <InputLabel>Nuevo Estado</InputLabel>
                 <Select
                   value={newState}
@@ -504,7 +517,7 @@ export default function ClientsList() {
               </FormControl>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
                 <strong>Activo:</strong> Puede solicitar préstamos<br />
-                <strong>Restringido:</strong> No puede solicitar préstamos hasta regularizar deudas
+                <strong>Restringido:</strong> No puede solicitar préstamos
               </Typography>
             </Box>
           )}
@@ -514,7 +527,7 @@ export default function ClientsList() {
             Cancelar
           </Button>
           <Button onClick={handleSaveState} variant="contained" color="warning" disabled={loading}>
-            Cambiar Estado
+            {loading ? 'Cambiando...' : 'Cambiar Estado'}
           </Button>
         </DialogActions>
       </Dialog>

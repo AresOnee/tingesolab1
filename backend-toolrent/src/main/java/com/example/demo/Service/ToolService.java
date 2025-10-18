@@ -17,7 +17,7 @@ import java.util.Optional;
 public class ToolService {
 
     @Autowired private ToolRepository toolRepository;
-    @Autowired private KardexService kardexService; // ✅ NUEVA DEPENDENCIA
+    @Autowired private KardexService kardexService;
 
     public List<ToolEntity> getAllTools() {
         return toolRepository.findAll();
@@ -33,8 +33,9 @@ public class ToolService {
     /**
      * RF1.1: Registrar nuevas herramientas
      * RF5.1: Registrar automáticamente en kardex
+     * ✅ CORREGIDO: Ahora recibe username del usuario autenticado
      */
-    public ToolEntity create(ToolEntity body) {
+    public ToolEntity create(ToolEntity body, String username) {  // ← Agregado parámetro username
         String name = Optional.ofNullable(body.getName()).orElse("").trim();
         if (name.isBlank()) throw new IllegalArgumentException("El nombre es obligatorio");
         if (toolRepository.existsByNameIgnoreCase(name)) {
@@ -48,12 +49,12 @@ public class ToolService {
         // Guardar herramienta
         ToolEntity saved = toolRepository.save(body);
 
-        // ✅ RF5.1: Registrar movimiento en kardex
+        // ✅ RF5.1: Registrar movimiento en kardex con username real
         kardexService.registerMovement(
                 saved.getId(),
                 "REGISTRO",
                 saved.getStock(),
-                "ADMIN",
+                username,  // ← Ahora usa el username real de Keycloak (ej: "diego")
                 "Alta de herramienta: " + saved.getName(),
                 null
         );
@@ -64,8 +65,9 @@ public class ToolService {
     /**
      * RF1.2: Dar de baja herramientas dañadas o en desuso (solo Administrador)
      * RF5.1: Registrar automáticamente en kardex
+     * ✅ CORREGIDO: Ahora recibe username del usuario autenticado
      */
-    public ToolEntity decommission(Long toolId) {
+    public ToolEntity decommission(Long toolId, String username) {  // ← Agregado parámetro username
         ToolEntity tool = toolRepository.findById(toolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Herramienta no encontrada"));
 
@@ -89,12 +91,12 @@ public class ToolService {
         tool.setStock(0);
         ToolEntity saved = toolRepository.save(tool);
 
-        // ✅ RF5.1: Registrar baja en kardex
+        // ✅ RF5.1: Registrar baja en kardex con username real
         kardexService.registerMovement(
                 saved.getId(),
                 "BAJA",
                 -stockAnterior, // negativo porque se reduce
-                "ADMIN",
+                username,  // ← Ahora usa el username real de Keycloak (ej: "diego")
                 "Baja de herramienta: " + saved.getName(),
                 null
         );

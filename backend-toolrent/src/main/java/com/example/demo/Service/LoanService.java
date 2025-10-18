@@ -29,70 +29,109 @@ public class LoanService {
     /**
      * RF2.1: Crea un préstamo aplicando reglas de negocio
      * RF5.1: Registrar automáticamente en kardex
-     *
-     * ✅ MEJORAS IMPLEMENTADAS (Gap Analysis - Punto 4):
-     * - Validación de estado del cliente (Activo/Restringido)
-     * - Validación de multas pendientes usando hasOverduesOrFines()
-     * - Validación de fechas (dueDate > startDate)
-     * - Cálculo correcto de rentalCost (días × tarifa)
+     * ✅ MEJORADO: Mensajes de error específicos y detallados
      */
     @Transactional
-    public LoanEntity createLoan(Long clientId, Long toolId, LocalDate dueDate) {
+    public LoanEntity createLoan(Long clientId, Long toolId, LocalDate dueDate, String username) {
+        // ========================================
+        // VALIDACIONES BÁSICAS
+        // ========================================
         if (clientId == null || toolId == null || dueDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "clientId, toolId y dueDate son obligatorios");
+                    "Los campos cliente, herramienta y fecha de devolución son obligatorios");
         }
 
-        // 1) Cargar entidades relacionadas
+        // ========================================
+        // CARGAR ENTIDADES
+        // ========================================
         ClientEntity client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Cliente no encontrado"));
+                        String.format("Cliente con ID %d no encontrado", clientId)));
+
         ToolEntity tool = toolRepository.findById(toolId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Herramienta no encontrada"));
+                        String.format("Herramienta con ID %d no encontrada", toolId)));
 
-        // 2) Reglas de negocio
+        // ========================================
+        // VALIDACIONES DE NEGOCIO CON MENSAJES ESPECÍFICOS
+        // ========================================
         LocalDate today = LocalDate.now();
         List<LoanEntity> allLoans = loanRepository.findAll();
 
-        // ✅ NUEVA VALIDACIÓN 1: Cliente debe estar en estado "Activo"
-        // RN: "El cliente debe estar en estado Activo (no restringido)"
+        // ✅ VALIDACIÓN 1: Cliente debe estar en estado "Activo"
         if (!"Activo".equalsIgnoreCase(client.getState())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    String.format("El cliente está en estado '%s'. Solo clientes activos pueden solicitar préstamos.",
-                            client.getState()));
+                    String.format("El cliente '%s' está en estado '%s'. Solo se pueden realizar préstamos a clientes en estado 'Activo'.",
+                            client.getName(), client.getState()));
         }
 
-        // ✅ NUEVA VALIDACIÓN 2: Cliente no debe tener multas pendientes
-        // RN: "El cliente no debe tener multas impagas"
+        // ✅ VALIDACIÓN 2: Cliente no debe tener préstamos atrasados o multas pendientes
         if (loanRepository.hasOverduesOrFines(clientId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El cliente tiene multas pendientes o préstamos atrasados sin regularizar. " +
-                            "Debe pagar las multas antes de solicitar un nuevo préstamo.");
+            // Buscar préstamos con problemas para dar detalles
+            List<LoanEntity> problematicLoans = allLoans.stream()
+                    .filter(l -> Objects.equals(l.getClient().getId(), clientId))
+                    .filter(l ->
+                            // Préstamos atrasados sin devolver
+                            (l.getReturnDate() == null && l.getDueDate().isBefore(today)) ||
+                                    // Préstamos con multas pendientes
+                                    (l.getFine() != null && l.getFine() > 0 && "Atrasado".equals(l.getStatus()))
+                    )
+                    .toList();
+
+            if (!problematicLoans.isEmpty()) {
+                StringBuilder errorMessage = new StringBuilder();
+                errorMessage.append(String.format("El cliente '%s' tiene los siguientes problemas pendientes:\n", client.getName()));
+
+                for (LoanEntity loan : problematicLoans) {
+                    if (loan.getReturnDate() == null && loan.getDueDate().isBefore(today)) {
+                        long daysOverdue = ChronoUnit.DAYS.between(loan.getDueDate(), today);
+                        errorMessage.append(String.format(
+                                "• Préstamo #%d (%s) vencido hace %d día(s)\n",
+                                loan.getId(),
+                                loan.getTool().getName(),
+                                daysOverdue
+                        ));
+                    }
+
+                    if (loan.getFine() != null && loan.getFine() > 0 && "Atrasado".equals(loan.getStatus())) {
+                        errorMessage.append(String.format(
+                                "• Préstamo #%d (%s) con multa pendiente de $%.0f\n",
+                                loan.getId(),
+                                loan.getTool().getName(),
+                                loan.getFine()
+                        ));
+                    }
+                }
+
+                errorMessage.append("\nDebe regularizar su situación antes de solicitar un nuevo préstamo.");
+
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, errorMessage.toString());
+            }
         }
 
-        // ✅ NUEVA VALIDACIÓN 3: Fecha de devolución debe ser posterior a la fecha de inicio
-        // RN: "El sistema debe verificar que la fecha de devolución no sea anterior a la fecha de entrega"
+        // ✅ VALIDACIÓN 3: Fecha de devolución debe ser posterior a hoy
         if (dueDate.isBefore(today)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "La fecha de devolución no puede ser anterior a la fecha de préstamo");
+                    String.format("La fecha de devolución (%s) no puede ser anterior a la fecha actual (%s)",
+                            dueDate, today));
         }
 
-        // 2.0.1) Herramienta debe estar "Disponible"
+        // ✅ VALIDACIÓN 4: Herramienta debe estar "Disponible"
         if (!"Disponible".equalsIgnoreCase(tool.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "La herramienta no está disponible (estado: " + tool.getStatus() + ")");
+                    String.format("La herramienta '%s' no está disponible. Estado actual: '%s'",
+                            tool.getName(), tool.getStatus()));
         }
 
-        // 2.0.2) Stock >= 1
+        // ✅ VALIDACIÓN 5: Stock >= 1
         int stockActual = tool.getStock();
         if (stockActual < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "La herramienta está sin stock");
+                    String.format("La herramienta '%s' no tiene stock disponible (Stock actual: %d)",
+                            tool.getName(), stockActual));
         }
 
-        // 2.1) Cliente no debe tener préstamos vencidos (esta validación ya está cubierta por hasOverduesOrFines)
-        // Pero la mantenemos por compatibilidad con tests existentes
+        // ✅ VALIDACIÓN 6: Cliente no debe tener préstamos vencidos sin devolver
         boolean tieneVencidos = allLoans.stream()
                 .anyMatch(l ->
                         Objects.equals(l.getClient().getId(), clientId)
@@ -101,19 +140,23 @@ public class LoanService {
                 );
         if (tieneVencidos) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El cliente tiene préstamos vencidos sin devolver");
+                    String.format("El cliente '%s' tiene préstamos vencidos sin devolver. " +
+                                    "Debe devolver las herramientas atrasadas antes de solicitar un nuevo préstamo.",
+                            client.getName()));
         }
 
-        // 2.2) Máximo 5 préstamos activos
+        // ✅ VALIDACIÓN 7: Máximo 5 préstamos activos
         long activos = allLoans.stream()
                 .filter(l -> Objects.equals(l.getClient().getId(), clientId) && l.getReturnDate() == null)
                 .count();
         if (activos >= 5) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Máximo 5 préstamos activos por cliente");
+                    String.format("El cliente '%s' ya tiene 5 préstamos activos. " +
+                                    "Debe devolver al menos una herramienta antes de solicitar un nuevo préstamo.",
+                            client.getName()));
         }
 
-        // 2.3) No puede tener la misma herramienta activa
+        // ✅ VALIDACIÓN 8: No puede tener la misma herramienta activa
         boolean mismaTool = allLoans.stream()
                 .anyMatch(l ->
                         Objects.equals(l.getClient().getId(), clientId)
@@ -122,22 +165,27 @@ public class LoanService {
                 );
         if (mismaTool) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El cliente ya tiene un préstamo activo de la misma herramienta");
+                    String.format("El cliente '%s' ya tiene un préstamo activo de la herramienta '%s'. " +
+                                    "No se puede prestar la misma herramienta dos veces simultáneamente.",
+                            client.getName(), tool.getName()));
         }
 
-        // ✅ CORRECCIÓN: Calcular costo del arriendo correctamente
-        // RN: "costo del arriendo = días × tarifa"
+        // ========================================
+        // CÁLCULO DE COSTO DE ARRIENDO
+        // ========================================
         double tarifaDiaria = configService.getTarifaArriendoDiaria();
         long dias = ChronoUnit.DAYS.between(today, dueDate);
 
-        // Mínimo 1 día de arriendo (según RN)
+        // Mínimo 1 día de arriendo
         if (dias < 1) {
             dias = 1;
         }
 
         double costoArriendo = dias * tarifaDiaria;
 
-        // 3) Crear préstamo
+        // ========================================
+        // CREAR PRÉSTAMO
+        // ========================================
         LoanEntity loan = new LoanEntity();
         loan.setClient(client);
         loan.setTool(tool);
@@ -146,7 +194,7 @@ public class LoanService {
         loan.setReturnDate(null);
         loan.setStatus("Vigente");
         loan.setFine(0d);
-        loan.setRentalCost(costoArriendo); // ✅ CORRECCIÓN: Ahora multiplica por días
+        loan.setRentalCost(costoArriendo);
         loan.setDamaged(false);
         loan.setIrreparable(false);
 
@@ -156,40 +204,29 @@ public class LoanService {
         LoanEntity saved = loanRepository.save(loan);
         toolRepository.save(tool);
 
-        // ✅ RF5.1: Registrar préstamo en kardex
+        // ✅ RF5.1: Registrar préstamo en kardex con username real
         kardexService.registerMovement(
                 tool.getId(),
                 "PRESTAMO",
-                -1, // negativo porque reduce stock
-                "USER", // o extraer del JWT si está disponible
-                "Préstamo a cliente: " + client.getName(),
+                -1,
+                username,
+                String.format("Préstamo a cliente: %s", client.getName()),
                 saved.getId()
         );
 
         return saved;
     }
 
-    // ==========================================
-// FRAGMENTO MODIFICADO DE LoanService.java
-// Método: returnTool()
-// ==========================================
-
     /**
      * RF2.3: Registrar devolución de herramienta
      * RF2.4: Calcular multas por atraso
      * RF5.1: Registrar automáticamente en kardex
-     *
-     * ✅ NUEVA FUNCIONALIDAD: Aplicar cargo por reparación configurable (Épica 2 - RN #16)
-     *
-     * @param loanId ID del préstamo a devolver
-     * @param isDamaged Si la herramienta está dañada
-     * @param isIrreparable Si el daño es irreparable
-     * @return LoanEntity actualizado
      */
     @Transactional
-    public LoanEntity returnTool(Long loanId, boolean isDamaged, boolean isIrreparable) {
+    public LoanEntity returnTool(Long loanId, boolean isDamaged, boolean isIrreparable, String username) {
         var loan = loanRepository.findById(loanId)
-                .orElseThrow(() -> new IllegalArgumentException("Loan not found: " + loanId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        String.format("Préstamo con ID %d no encontrado", loanId)));
         var tool = loan.getTool();
 
         // Si ya está devuelto, no hacer nada
@@ -214,74 +251,53 @@ public class LoanService {
 
         // 2) Procesar según tipo de daño
         if (isDamaged && isIrreparable) {
-            // ========================================
             // CASO 1: Daño IRREPARABLE
-            // ========================================
-            // RN: Herramienta → "Dada de baja"
-            // RN: Cobrar valor de reposición al cliente
             tool.setStatus("Dada de baja");
-
-            // NO incrementar stock (la herramienta se pierde)
-            // Cobrar valor de reposición
             double repoValue = tool.getReplacementValue();
             loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + repoValue);
 
-            // Registrar baja en kardex
             kardexService.registerMovement(
                     tool.getId(),
                     "BAJA",
-                    0, // No cambia stock (ya está considerado en préstamo)
-                    "USER",
-                    "Baja por daño irreparable (loan #" + loanId + ")",
+                    0,
+                    username,
+                    String.format("Baja por daño irreparable (préstamo #%d)", loanId),
                     loanId
             );
 
         } else if (isDamaged && !isIrreparable) {
-            // ========================================
-            // CASO 2: Daño REPARABLE (LEVE)
-            // ✅ NUEVA FUNCIONALIDAD
-            // ========================================
-            // RN #16: Herramienta → "En reparación"
-            // RN #16: Aplicar cargo de reparación configurable
+            // CASO 2: Daño REPARABLE
             tool.setStatus("En reparación");
-            tool.setStock(stockActual + 1); // Se incrementa stock (herramienta recuperable)
+            tool.setStock(stockActual + 1);
 
-            // ✅ NUEVO: Aplicar cargo por reparación configurable
             double cargoReparacion = configService.getCargoReparacion();
             loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + cargoReparacion);
 
-            // Registrar devolución con daño reparable en kardex
-            kardexService.registerMovement(
-                    tool.getId(),
-                    "DEVOLUCION",
-                    1, // Se recupera 1 unidad
-                    "USER",
-                    "Devolución con daño reparable (loan #" + loanId + ")",
-                    loanId
-            );
-
-        } else {
-            // ========================================
-            // CASO 3: Sin daños
-            // ========================================
-            // RN: Herramienta → "Disponible"
-            tool.setStatus("Disponible");
-            tool.setStock(stockActual + 1);
-
-            // Registrar devolución normal en kardex
             kardexService.registerMovement(
                     tool.getId(),
                     "DEVOLUCION",
                     1,
-                    "USER",
-                    "Devolución normal (loan #" + loanId + ")",
+                    username,
+                    String.format("Devolución con daño reparable (préstamo #%d)", loanId),
+                    loanId
+            );
+
+        } else {
+            // CASO 3: Sin daños
+            tool.setStatus("Disponible");
+            tool.setStock(stockActual + 1);
+
+            kardexService.registerMovement(
+                    tool.getId(),
+                    "DEVOLUCION",
+                    1,
+                    username,
+                    String.format("Devolución normal (préstamo #%d)", loanId),
                     loanId
             );
         }
 
-        // ✅ CORRECCIÓN CRÍTICA: Establecer estado según si hay multa o no
-        // RN: Si hay multa (por atraso o daño), estado = "Atrasado"
-        // RN: Si no hay multa, estado = "Devuelto"
+        // Establecer estado según multa
         if (loan.getFine() != null && loan.getFine() > 0) {
             loan.setStatus("Atrasado");
         } else {
@@ -291,7 +307,6 @@ public class LoanService {
         toolRepository.save(tool);
         return loanRepository.save(loan);
     }
-
 
     public List<LoanEntity> getAllLoans() {
         return loanRepository.findAll();
