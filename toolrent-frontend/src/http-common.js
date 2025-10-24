@@ -153,7 +153,8 @@ http.interceptors.response.use(
       userMessage,           // Mensaje para mostrar al usuario
       originalMessage: message, // Mensaje original del backend
       status,                // Código HTTP
-      isDetailedMessage      // Flag para indicar si es mensaje detallado
+      isDetailedMessage,      // Flag para indicar si es mensaje detallado
+      shownToUser: Boolean(showErrorCallback),
     };
     
     // Mostrar error en Snackbar si el callback esta configurado

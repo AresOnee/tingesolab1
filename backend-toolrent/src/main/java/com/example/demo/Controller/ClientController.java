@@ -2,32 +2,15 @@ package com.example.demo.Controller;
 
 import com.example.demo.Entity.ClientEntity;
 import com.example.demo.Service.ClientService;
-import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Controlador REST para gestión de clientes (Gap Analysis - Puntos 8 y 9)
- *
- * ✅ ENDPOINTS CRUD COMPLETOS:
- * - GET    /api/v1/clients/       → Listar todos
- * - GET    /api/v1/clients/{id}   → Obtener por ID
- * - POST   /api/v1/clients        → Crear cliente
- * - PUT    /api/v1/clients/{id}   → Actualizar cliente
- * - PATCH  /api/v1/clients/{id}/state → Cambiar estado
- * - DELETE /api/v1/clients/{id}   → Eliminar cliente (opcional)
- *
- * ✅ SEGURIDAD:
- * - Listar/Ver: USER o ADMIN
- * - Crear/Actualizar/Eliminar: Solo ADMIN
- */
 @RestController
 @RequestMapping("/api/v1/clients")
 public class ClientController {
@@ -36,147 +19,129 @@ public class ClientController {
     private ClientService clientService;
 
     /**
-     * GET /api/v1/clients/
-     * Listar todos los clientes
-     *
-     * Acceso: USER o ADMIN
-     *
-     * @return Lista de clientes
+     * Obtener todos los clientes
      */
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
-    @GetMapping("/")
-    public List<ClientEntity> getAll() {
-        return clientService.getAll();
+    @GetMapping({ "", "/" })
+    public ResponseEntity<List<ClientEntity>> getAllClients() {
+        return ResponseEntity.ok(clientService.getAllClients());
     }
 
-    /*
-     * GET /api/v1/clients/{id}
-     * Obtener un cliente específico por ID
-     *
-     * Acceso: USER o ADMIN
-     *
-     * @param id ID del cliente
-     * @return Cliente encontrado
-     * @throws ResponseStatusException 404 si no existe
+    /**
+     * Obtener cliente por ID
      */
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
     @GetMapping("/{id}")
-    public ClientEntity getById(@PathVariable Long id) {
-        return clientService.getById(id);
+    public ResponseEntity<ClientEntity> getClientById(@PathVariable Long id) {
+        ClientEntity client = clientService.getClientById(id);
+        if (client == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(client);
     }
 
     /**
-     * POST /api/v1/clients
-     * Crear un nuevo cliente
-     *
-     * Acceso: Solo ADMIN
-     *
-     * Validaciones automáticas (@Valid):
-     * - Nombre: obligatorio, 2-100 caracteres
-     * - RUT: obligatorio, formato XX.XXX.XXX-X
-     * - Email: obligatorio, formato válido
-     * - Teléfono: obligatorio, formato +56XXXXXXXXX
-     * - Estado: opcional, por defecto "Activo"
-     *
-     * Validaciones de negocio:
-     * - RUT único
-     * - Email único
-     *
-     * @param body Datos del cliente a crear
-     * @return 201 Created con el cliente creado y header Location
-
+     * Crear cliente
      */
     @PreAuthorize("hasRole('ADMIN')")
-    @PostMapping
-    public ResponseEntity<ClientEntity> create(@Valid @RequestBody ClientEntity body) {
-        ClientEntity saved = clientService.create(body);
-
-        URI location = ServletUriComponentsBuilder
-                .fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(saved.getId())
-                .toUri();
-
-        return ResponseEntity.created(location).body(saved);
+    @PostMapping({ "", "/" })
+    public ResponseEntity<ClientEntity> createOrUpdateClient(@RequestBody ClientEntity client) {
+        ClientEntity saved = clientService.saveClient(client);
+        return ResponseEntity.ok(saved);
     }
 
     /**
+     * Actualizar cliente (permite cambio manual de estado por admin)
+     *
      * PUT /api/v1/clients/{id}
-     * Actualizar datos completos de un cliente
+     * Body: { "state": "Restringido" }  o  { "state": "Activo" }
      *
-     * Acceso: Solo ADMIN
-     *
-     * Campos que se pueden actualizar:
-     * - name: Nombre del cliente
-     * - phone: Teléfono
-     * - email: Email (debe ser único)
-     *
-     * Campos que NO se pueden cambiar:
-     * - rut: Es inmutable
-     * - state: Usar PATCH /clients/{id}/state
-     *
-     * @param id ID del cliente a actualizar
-
+     * También permite actualizar otros campos: name, rut, email, phone
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
-    public ResponseEntity<ClientEntity> update(
+    public ResponseEntity<ClientEntity> updateClient(
             @PathVariable Long id,
-            @Valid @RequestBody ClientEntity body) {
+            @RequestBody Map<String, Object> updates) {
 
-        ClientEntity updated = clientService.update(id, body);
-        return ResponseEntity.ok(updated);
-    }
-
-    /**
-     * PATCH /api/v1/clients/{id}/state
-     * Cambiar el estado de un cliente (Activo ↔ Restringido)
-     *
-     * Acceso: Solo ADMIN
-     *
-     * RF3.2: Cambiar estado de cliente a "restringido" en caso de atrasos
-     *
-     * Estados válidos:
-     * - "Activo": Puede solicitar préstamos
-     * - "Restringido": No puede solicitar préstamos hasta regularizar
-     *
-     * Body esperado:
-     * {
-     *   "state": "Restringido"
-     * }
-     *
-     */
-    @PreAuthorize("hasRole('ADMIN')")
-    @PatchMapping("/{id}/state")
-    public ResponseEntity<ClientEntity> updateState(
-            @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
-
-        String newState = body.get("state");
-
-        if (newState == null || newState.isBlank()) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "El campo 'state' es obligatorio");
+        ClientEntity client = clientService.getClientById(id);
+        if (client == null) {
+            return ResponseEntity.notFound().build();
         }
 
-        ClientEntity updated = clientService.updateState(id, newState);
-        return ResponseEntity.ok(updated);
+        // Actualizar solo los campos que vienen en el body
+        if (updates.containsKey("state")) {
+            String newState = (String) updates.get("state");
+
+            // Validar estados permitidos
+            if (!"Activo".equals(newState) && !"Restringido".equals(newState)) {
+                throw new IllegalArgumentException(
+                        "Estado inválido. Solo se permiten: 'Activo' o 'Restringido'"
+                );
+            }
+
+            client.setState(newState);
+        }
+
+        // Actualizar otros campos si vienen
+        if (updates.containsKey("name")) {
+            client.setName((String) updates.get("name"));
+        }
+        if (updates.containsKey("rut")) {
+            client.setRut((String) updates.get("rut"));
+        }
+        if (updates.containsKey("email")) {
+            client.setEmail((String) updates.get("email"));
+        }
+        if (updates.containsKey("phone")) {
+            client.setPhone((String) updates.get("phone"));
+        }
+
+        ClientEntity saved = clientService.saveClient(client);
+        return ResponseEntity.ok(saved);
     }
 
     /**
-     * DELETE /api/v1/clients/{id}
-     * Eliminar un cliente (opcional - para CRUD completo)
+     * RF3.2: Actualizar el estado de UN cliente específico
+     * basado en sus préstamos activos (automático según reglas)
      *
-     * Acceso: Solo ADMIN
-     *
-     * NOTA: En producción, evaluar si es mejor hacer borrado lógico
-     * (cambiar estado a "Inactivo") en lugar de borrado físico
+     * PUT /api/v1/clients/{id}/update-state
      */
     @PreAuthorize("hasRole('ADMIN')")
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        clientService.delete(id);
-        return ResponseEntity.noContent().build();
+    @PutMapping("/{id}/update-state")
+    public ResponseEntity<Map<String, Object>> updateClientState(@PathVariable Long id) {
+        boolean updated = clientService.updateClientStateBasedOnLoans(id);
+
+        ClientEntity client = clientService.getClientById(id);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("updated", updated);
+        response.put("clientId", id);
+        response.put("currentState", client != null ? client.getState() : null);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * RF3.2: Actualizar el estado de TODOS los clientes
+     * basado en sus préstamos activos
+     *
+     * POST /api/v1/clients/update-all-states
+     *
+     * Este endpoint debe ser ejecutado:
+     * - Manualmente por un administrador
+     * - Automáticamente por un cron job (cada hora, diariamente, etc.)
+     * - Después de operaciones críticas (devoluciones, multas, etc.)
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/update-all-states")
+    public ResponseEntity<Map<String, String>> updateAllClientStates() {
+        clientService.updateAllClientStates();
+
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Estados de clientes actualizados correctamente según sus préstamos");
+        response.put("timestamp", java.time.LocalDateTime.now().toString());
+
+        return ResponseEntity.ok(response);
     }
 }

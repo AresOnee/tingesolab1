@@ -25,25 +25,25 @@ public class LoanService {
     @Autowired private ToolRepository toolRepository;
     @Autowired private ConfigService configService;
     @Autowired private KardexService kardexService;
+    @Autowired private ClientService clientService;  // ✅ NUEVO
 
     /**
      * RF2.1: Crea un préstamo aplicando reglas de negocio
+     * RF3.2: Actualiza estado del cliente automáticamente
      * RF5.1: Registrar automáticamente en kardex
-     * ✅ MEJORADO: Mensajes de error específicos y detallados
      */
     @Transactional
     public LoanEntity createLoan(Long clientId, Long toolId, LocalDate dueDate, String username) {
-        // ========================================
-        // VALIDACIONES BÁSICAS
-        // ========================================
+        // ✅ NUEVO: Actualizar estado del cliente ANTES de validar
+        clientService.updateClientStateBasedOnLoans(clientId);
+
+        // Validaciones básicas
         if (clientId == null || toolId == null || dueDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Los campos cliente, herramienta y fecha de devolución son obligatorios");
         }
 
-        // ========================================
-        // CARGAR ENTIDADES
-        // ========================================
+        // Cargar entidades
         ClientEntity client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         String.format("Cliente con ID %d no encontrado", clientId)));
@@ -52,9 +52,7 @@ public class LoanService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         String.format("Herramienta con ID %d no encontrada", toolId)));
 
-        // ========================================
-        // VALIDACIONES DE NEGOCIO CON MENSAJES ESPECÍFICOS
-        // ========================================
+        // Validaciones de negocio
         LocalDate today = LocalDate.now();
         List<LoanEntity> allLoans = loanRepository.findAll();
 
@@ -71,9 +69,7 @@ public class LoanService {
             List<LoanEntity> problematicLoans = allLoans.stream()
                     .filter(l -> Objects.equals(l.getClient().getId(), clientId))
                     .filter(l ->
-                            // Préstamos atrasados sin devolver
                             (l.getReturnDate() == null && l.getDueDate().isBefore(today)) ||
-                                    // Préstamos con multas pendientes
                                     (l.getFine() != null && l.getFine() > 0 && "Atrasado".equals(l.getStatus()))
                     )
                     .toList();
@@ -131,21 +127,7 @@ public class LoanService {
                             tool.getName(), stockActual));
         }
 
-        // ✅ VALIDACIÓN 6: Cliente no debe tener préstamos vencidos sin devolver
-        boolean tieneVencidos = allLoans.stream()
-                .anyMatch(l ->
-                        Objects.equals(l.getClient().getId(), clientId)
-                                && l.getReturnDate() == null
-                                && l.getDueDate().isBefore(today)
-                );
-        if (tieneVencidos) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    String.format("El cliente '%s' tiene préstamos vencidos sin devolver. " +
-                                    "Debe devolver las herramientas atrasadas antes de solicitar un nuevo préstamo.",
-                            client.getName()));
-        }
-
-        // ✅ VALIDACIÓN 7: Máximo 5 préstamos activos
+        // ✅ VALIDACIÓN 6: Máximo 5 préstamos activos
         long activos = allLoans.stream()
                 .filter(l -> Objects.equals(l.getClient().getId(), clientId) && l.getReturnDate() == null)
                 .count();
@@ -156,7 +138,7 @@ public class LoanService {
                             client.getName()));
         }
 
-        // ✅ VALIDACIÓN 8: No puede tener la misma herramienta activa
+        // ✅ VALIDACIÓN 7: No puede tener la misma herramienta activa
         boolean mismaTool = allLoans.stream()
                 .anyMatch(l ->
                         Objects.equals(l.getClient().getId(), clientId)
@@ -170,22 +152,13 @@ public class LoanService {
                             client.getName(), tool.getName()));
         }
 
-        // ========================================
-        // CÁLCULO DE COSTO DE ARRIENDO
-        // ========================================
+        // Calcular costo de arriendo
         double tarifaDiaria = configService.getTarifaArriendoDiaria();
         long dias = ChronoUnit.DAYS.between(today, dueDate);
-
-        // Mínimo 1 día de arriendo
-        if (dias < 1) {
-            dias = 1;
-        }
-
+        if (dias < 1) dias = 1;
         double costoArriendo = dias * tarifaDiaria;
 
-        // ========================================
-        // CREAR PRÉSTAMO
-        // ========================================
+        // Crear préstamo
         LoanEntity loan = new LoanEntity();
         loan.setClient(client);
         loan.setTool(tool);
@@ -198,13 +171,12 @@ public class LoanService {
         loan.setDamaged(false);
         loan.setIrreparable(false);
 
-        // Descontar stock y persistir
         tool.setStock(stockActual - 1);
 
         LoanEntity saved = loanRepository.save(loan);
         toolRepository.save(tool);
 
-        // ✅ RF5.1: Registrar préstamo en kardex con username real
+        // Registrar en kardex
         kardexService.registerMovement(
                 tool.getId(),
                 "PRESTAMO",
@@ -220,6 +192,7 @@ public class LoanService {
     /**
      * RF2.3: Registrar devolución de herramienta
      * RF2.4: Calcular multas por atraso
+     * RF3.2: Actualizar estado del cliente automáticamente
      * RF5.1: Registrar automáticamente en kardex
      */
     @Transactional
@@ -229,7 +202,6 @@ public class LoanService {
                         String.format("Préstamo con ID %d no encontrado", loanId)));
         var tool = loan.getTool();
 
-        // Si ya está devuelto, no hacer nada
         if ("Devuelto".equalsIgnoreCase(loan.getStatus())) {
             return loan;
         }
@@ -237,7 +209,7 @@ public class LoanService {
         LocalDate today = LocalDate.now();
         loan.setReturnDate(today);
 
-        // 1) Calcular multa por atraso
+        // Calcular multa por atraso
         long daysLate = Math.max(0, ChronoUnit.DAYS.between(loan.getDueDate(), today));
         double fineDaily = configService.getTarifaMultaDiaria();
 
@@ -249,9 +221,8 @@ public class LoanService {
         loan.setDamaged(isDamaged);
         loan.setIrreparable(isIrreparable);
 
-        // 2) Procesar según tipo de daño
+        // Procesar según tipo de daño
         if (isDamaged && isIrreparable) {
-            // CASO 1: Daño IRREPARABLE
             tool.setStatus("Dada de baja");
             double repoValue = tool.getReplacementValue();
             loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + repoValue);
@@ -264,9 +235,7 @@ public class LoanService {
                     String.format("Baja por daño irreparable (préstamo #%d)", loanId),
                     loanId
             );
-
         } else if (isDamaged && !isIrreparable) {
-            // CASO 2: Daño REPARABLE
             tool.setStatus("En reparación");
             tool.setStock(stockActual + 1);
 
@@ -281,9 +250,7 @@ public class LoanService {
                     String.format("Devolución con daño reparable (préstamo #%d)", loanId),
                     loanId
             );
-
         } else {
-            // CASO 3: Sin daños
             tool.setStatus("Disponible");
             tool.setStock(stockActual + 1);
 
@@ -305,7 +272,12 @@ public class LoanService {
         }
 
         toolRepository.save(tool);
-        return loanRepository.save(loan);
+        LoanEntity savedLoan = loanRepository.save(loan);
+
+        // ✅ NUEVO: Actualizar estado del cliente después de la devolución
+        clientService.updateClientStateBasedOnLoans(loan.getClient().getId());
+
+        return savedLoan;
     }
 
     public List<LoanEntity> getAllLoans() {

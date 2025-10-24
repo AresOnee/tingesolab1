@@ -1,191 +1,162 @@
 package com.example.demo.Service;
 
 import com.example.demo.Entity.ClientEntity;
+import com.example.demo.Entity.LoanEntity;
 import com.example.demo.Repository.ClientRepository;
+import com.example.demo.Repository.LoanRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/**
- * Servicio de gestión de clientes (Gap Analysis - Puntos 8 y 9)
- *
- * ✅ OPERACIONES CRUD COMPLETAS:
- * - CREATE: Crear cliente con validaciones
- * - READ: Listar todos los clientes
- * - UPDATE: Actualizar datos del cliente
- * - UPDATE STATE: Cambiar estado (Activo ↔ Restringido)
- *
- * ✅ VALIDACIONES:
- * - RUT único
- * - Email único
- * - Estado por defecto "Activo"
- * - Formatos validados por Bean Validation
- */
 @Service
 public class ClientService {
 
     @Autowired
     private ClientRepository clientRepository;
 
+    @Autowired
+    private LoanRepository loanRepository;
+
     /**
-     * RF3.1: Obtener todos los clientes
+     * RF3.2: Cambiar estado de cliente a "Restringido" en caso de atrasos
+     *
+     * Este método verifica si un cliente tiene préstamos atrasados
+     * y actualiza su estado automáticamente.
+     *
+     * @param clientId ID del cliente a verificar
+     * @return true si se actualizó el estado, false si no
      */
-    public List<ClientEntity> getAll() {
+    @Transactional
+    public boolean updateClientStateBasedOnLoans(Long clientId) {
+        ClientEntity client = clientRepository.findById(clientId).orElse(null);
+        if (client == null) {
+            return false;
+        }
+
+        // Verificar si tiene préstamos atrasados o multas pendientes
+        boolean hasProblems = loanRepository.hasOverduesOrFines(clientId);
+
+        if (hasProblems && "Activo".equalsIgnoreCase(client.getState())) {
+            // F3.2: Cambiar a Restringido
+            client.setState("Restringido");
+            clientRepository.save(client);
+            return true;
+        } else if (!hasProblems && "Restringido".equalsIgnoreCase(client.getState())) {
+            // Restaurar a Activo si ya no tiene problemas
+            client.setState("Activo");
+            clientRepository.save(client);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * RF3.2: Actualizar el estado de TODOS los clientes
+     * según sus préstamos activos.
+     *
+     * Este método debe ejecutarse periódicamente o después
+     * de operaciones críticas (devoluciones, creación de préstamos, etc.)
+     */
+    @Transactional
+    public void updateAllClientStates() {
+        List<ClientEntity> allClients = clientRepository.findAll();
+        LocalDate today = LocalDate.now();
+
+        for (ClientEntity client : allClients) {
+            // Obtener todos los préstamos del cliente
+            List<LoanEntity> clientLoans = loanRepository.findAll().stream()
+                    .filter(loan -> loan.getClient().getId().equals(client.getId()))
+                    .toList();
+
+            // Verificar si tiene problemas
+            boolean hasOverdueLoans = clientLoans.stream()
+                    .anyMatch(loan ->
+                            loan.getReturnDate() == null &&
+                                    loan.getDueDate().isBefore(today)
+                    );
+
+            boolean hasPendingFines = clientLoans.stream()
+                    .anyMatch(loan ->
+                            loan.getFine() != null &&
+                                    loan.getFine() > 0 &&
+                                    "Atrasado".equals(loan.getStatus())
+                    );
+
+            boolean hasProblems = hasOverdueLoans || hasPendingFines;
+
+            // Actualizar estado según corresponda
+            if (hasProblems && !"Restringido".equalsIgnoreCase(client.getState())) {
+                client.setState("Restringido");
+                clientRepository.save(client);
+            } else if (!hasProblems && "Restringido".equalsIgnoreCase(client.getState())) {
+                client.setState("Activo");
+                clientRepository.save(client);
+            }
+        }
+    }
+
+    /**
+     *
+     * Este método se ejecuta automáticamente todos los días a las 00:01 AM
+     * para mantener los estados de los clientes actualizados según sus préstamos.
+     *
+     * Cron: "0 1 0 * * *"
+     *   - 0 = segundo 0
+     *   - 1 = minuto 1
+     *   - 0 = hora 0 (medianoche)
+     *   - * = todos los días del mes
+     *   - * = todos los meses
+     *   - * = todos los días de la semana
+     */
+    @Scheduled(cron = "0 1 0 * * *")
+    @Transactional
+    public void scheduledUpdateClientStates() {
+        String timestamp = LocalDateTime.now().format(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        );
+
+        System.out.println("\n═══════════════════════════════════════════");
+        System.out.println("⏰ [" + timestamp + "] Actualización automática diaria");
+        System.out.println("═══════════════════════════════════════════");
+
+        try {
+            updateAllClientStates();
+            System.out.println("✅ Estados de clientes actualizados correctamente");
+        } catch (Exception e) {
+            System.err.println("❌ Error al actualizar estados: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        System.out.println("═══════════════════════════════════════════\n");
+    }
+    // ========== FIN NUEVO MÉTODO ==========
+
+    /**
+     * Obtener todos los clientes
+     */
+    public List<ClientEntity> getAllClients() {
         return clientRepository.findAll();
     }
 
     /**
-     * RF3.1: Crear un nuevo cliente
-     *
-     * Validaciones:
-     * - RUT debe ser único
-     * - Email debe ser único
-     * - Estado por defecto: "Activo"
-     * - Formato de campos validado por @Valid en el controller
-     *
-     * @param body Datos del cliente a crear
-     * @return Cliente creado con ID asignado
-     * @throws ResponseStatusException 409 si RUT o email ya existen
+     * Obtener cliente por ID
      */
-    @Transactional
-    public ClientEntity create(ClientEntity body) {
-        // Validación: RUT único
-        if (clientRepository.existsByRut(body.getRut())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El RUT ya existe en el sistema");
-        }
-
-        // Validación: Email único
-        if (clientRepository.existsByEmail(body.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El email ya existe en el sistema");
-        }
-
-        // Asignar estado por defecto si no viene o está vacío
-        if (body.getState() == null || body.getState().isBlank()) {
-            body.setState("Activo");
-        }
-
-        return clientRepository.save(body);
+    public ClientEntity getClientById(Long id) {
+        return clientRepository.findById(id).orElse(null);
     }
 
     /**
-     * RF3.1: Actualizar datos completos de un cliente
-     *
-     * Permite actualizar: name, phone, email (NO permite cambiar RUT ni state)
-     * Para cambiar el estado usar el método updateState()
-     *
-     * Validaciones:
-     * - Cliente debe existir
-     * - Email debe ser único (si se cambia)
-     * - No permite cambiar el RUT (inmutable)
-     * - No permite cambiar el estado (usar updateState)
-     *
-     * @param id ID del cliente a actualizar
-     * @param body Nuevos datos del cliente
-     * @return Cliente actualizado
-     * @throws ResponseStatusException 404 si el cliente no existe
-     * @throws ResponseStatusException 409 si el nuevo email ya existe
+     * Crear o actualizar cliente
      */
     @Transactional
-    public ClientEntity update(Long id, ClientEntity body) {
-        // Verificar que el cliente existe
-        ClientEntity existing = clientRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Cliente no encontrado con ID: " + id));
-
-        // Validar que el email sea único (si se está cambiando)
-        if (!existing.getEmail().equals(body.getEmail())) {
-            if (clientRepository.existsByEmail(body.getEmail())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "El email ya existe en el sistema");
-            }
-        }
-
-        // Actualizar solo los campos permitidos
-        existing.setName(body.getName());
-        existing.setPhone(body.getPhone());
-        existing.setEmail(body.getEmail());
-
-        // NO permitir cambiar RUT (es inmutable)
-        // NO permitir cambiar state (usar updateState para eso)
-
-        return clientRepository.save(existing);
-    }
-
-    /**
-     * RF3.2: Cambiar estado de un cliente (Activo ↔ Restringido)
-     *
-     * Este método es específico para cambiar el estado del cliente
-     * según las reglas de negocio (por ejemplo, cuando tiene deudas)
-     *
-     * Estados válidos:
-     * - "Activo": Puede solicitar préstamos
-     * - "Restringido": No puede solicitar préstamos
-     *
-     * @param id ID del cliente
-     * @param newState Nuevo estado ("Activo" o "Restringido")
-     * @return Cliente con estado actualizado
-     * @throws ResponseStatusException 404 si el cliente no existe
-     * @throws ResponseStatusException 400 si el estado es inválido
-     */
-    @Transactional
-    public ClientEntity updateState(Long id, String newState) {
-        // Verificar que el cliente existe
-        ClientEntity client = clientRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Cliente no encontrado con ID: " + id));
-
-        // Validar que el estado sea válido
-        if (!"Activo".equalsIgnoreCase(newState) &&
-                !"Restringido".equalsIgnoreCase(newState)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Estado inválido. Valores permitidos: Activo, Restringido");
-        }
-
-        // Actualizar estado
-        client.setState(newState);
-
+    public ClientEntity saveClient(ClientEntity client) {
         return clientRepository.save(client);
-    }
-
-    /**
-     * Obtener un cliente por ID
-     *
-     * @param id ID del cliente
-     * @return Cliente encontrado
-     * @throws ResponseStatusException 404 si el cliente no existe
-     */
-    public ClientEntity getById(Long id) {
-        return clientRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Cliente no encontrado con ID: " + id));
-    }
-
-    /**
-     * Eliminar un cliente (opcional - para CRUD completo)
-     *
-     * NOTA: En producción, evaluar si es mejor hacer borrado lógico
-     * (cambiar estado a "Inactivo") en lugar de borrado físico
-     *
-     * @param id ID del cliente a eliminar
-     * @throws ResponseStatusException 404 si el cliente no existe
-     */
-    @Transactional
-    public void delete(Long id) {
-        if (!clientRepository.existsById(id)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Cliente no encontrado con ID: " + id);
-        }
-
-        clientRepository.deleteById(id);
     }
 }
