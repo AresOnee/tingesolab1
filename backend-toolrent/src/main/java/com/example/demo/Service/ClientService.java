@@ -43,14 +43,12 @@ public class ClientService {
         boolean hasProblems = loanRepository.hasOverduesOrFines(clientId);
 
         if (hasProblems && "Activo".equalsIgnoreCase(client.getState())) {
-            // F3.2: Cambiar a Restringido
-            client.setState("Restringido");
-            clientRepository.save(client);
+            // ✅ RF3.2: Cambiar a Restringido (sin validaciones)
+            clientRepository.updateClientState(clientId, "Restringido");
             return true;
         } else if (!hasProblems && "Restringido".equalsIgnoreCase(client.getState())) {
-            // Restaurar a Activo si ya no tiene problemas
-            client.setState("Activo");
-            clientRepository.save(client);
+            // ✅ Restaurar a Activo (sin validaciones)
+            clientRepository.updateClientState(clientId, "Activo");
             return true;
         }
 
@@ -91,18 +89,17 @@ public class ClientService {
 
             boolean hasProblems = hasOverdueLoans || hasPendingFines;
 
-            // Actualizar estado según corresponda
+            // ✅ CORRECCIÓN: Actualizar estado sin validaciones
             if (hasProblems && !"Restringido".equalsIgnoreCase(client.getState())) {
-                client.setState("Restringido");
-                clientRepository.save(client);
+                clientRepository.updateClientState(client.getId(), "Restringido");
             } else if (!hasProblems && "Restringido".equalsIgnoreCase(client.getState())) {
-                client.setState("Activo");
-                clientRepository.save(client);
+                clientRepository.updateClientState(client.getId(), "Activo");
             }
         }
     }
 
     /**
+     * ⏰ Tarea programada: Actualizar estados de clientes diariamente a las 00:01
      *
      * Este método se ejecuta automáticamente todos los días a las 00:01 AM
      * para mantener los estados de los clientes actualizados según sus préstamos.
@@ -115,7 +112,7 @@ public class ClientService {
      *   - * = todos los meses
      *   - * = todos los días de la semana
      */
-    @Scheduled(cron = "0 1 0 * * *")
+    @Scheduled(cron = "0 */1 * * * *")
     @Transactional
     public void scheduledUpdateClientStates() {
         String timestamp = LocalDateTime.now().format(
@@ -136,7 +133,6 @@ public class ClientService {
 
         System.out.println("═══════════════════════════════════════════\n");
     }
-    // ========== FIN NUEVO MÉTODO ==========
 
     /**
      * Obtener todos los clientes

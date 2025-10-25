@@ -1,31 +1,25 @@
 // src/components/Loans.jsx
-// VERSION MEJORADA - Con manejo específico de mensajes de error del backend
-
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button'; // ✅ AGREGAR IMPORT
+import RefreshIcon from '@mui/icons-material/Refresh'; // ✅ AGREGAR IMPORT
 import React, { useEffect, useMemo, useState } from "react";
 import http from "../http-common";
 import ReturnLoanModal from "./ReturnLoanModal";
 import { useSnackbar } from "../contexts/SnackbarContext";
 
 export default function Loans() {
-  // Contexto de notificaciones
-  const { showSuccess, showError, showWarning } = useSnackbar();
+  const { showSuccess, showError } = useSnackbar();
 
-  // catalogos
   const [clients, setClients] = useState([]);
   const [tools, setTools] = useState([]);
-  // tabla
   const [loans, setLoans] = useState([]);
-  // formulario
   const [form, setForm] = useState({ clientId: "", toolId: "", dueDate: "" });
   const [loading, setLoading] = useState(false);
 
-  // Estado para el modal de devolucion
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState(null);
 
-  // mapas para resolver rapidamente nombres por id
   const clientsMap = useMemo(() => {
     const m = new Map();
     for (const c of clients) m.set(c.id, c);
@@ -38,7 +32,6 @@ export default function Loans() {
     return m;
   }, [tools]);
 
-  // FUNCIONES CON SOPORTE PARA OBJETOS ANIDADOS Y SNAKE_CASE
   const clientLabel = (loan) => {
     if (loan.client && typeof loan.client === 'object' && loan.client.name) {
       return `${loan.client.id} - ${loan.client.name}`;
@@ -49,6 +42,16 @@ export default function Loans() {
     return client ? `${id} - ${client.name}` : `${id} - N/A`;
   };
 
+  const clientNameOnly = (loan) => {
+    if (loan.client && typeof loan.client === 'object' && loan.client.name) {
+      return loan.client.name;
+    }
+    const id = loan.clientId || loan.client_id || loan.client?.id;
+    if (!id) return "Desconocido";
+    const client = clientsMap.get(Number(id));
+    return client ? client.name : "Desconocido";
+  };
+
   const toolLabel = (loan) => {
     if (loan.tool && typeof loan.tool === 'object' && loan.tool.name) {
       return `${loan.tool.id} - ${loan.tool.name}`;
@@ -57,6 +60,16 @@ export default function Loans() {
     if (!id) return "—";
     const tool = toolsMap.get(Number(id));
     return tool ? `${id} - ${tool.name}` : `${id} - N/A`;
+  };
+
+  const toolNameOnly = (loan) => {
+    if (loan.tool && typeof loan.tool === 'object' && loan.tool.name) {
+      return loan.tool.name;
+    }
+    const id = loan.toolId || loan.tool_id || loan.tool?.id;
+    if (!id) return "Desconocida";
+    const tool = toolsMap.get(Number(id));
+    return tool ? tool.name : "Desconocida";
   };
 
   const getLoanDate = (loan) => {
@@ -93,10 +106,9 @@ export default function Loans() {
       setClients(clientsData);
       setTools(toolsData);
       setLoans(loansData);
-
     } catch (err) {
-      console.error("Error cargando datos:", err);
-      showError("Error cargando datos. Ver consola para detalles.");
+      console.error(err);
+      showError("No se pudieron cargar los datos");
     } finally {
       setLoading(false);
     }
@@ -104,63 +116,40 @@ export default function Loans() {
 
   async function handleCreate(e) {
     e.preventDefault();
-    
-    // ✅ MEJORADO: Validaciones básicas del frontend
-    // Las validaciones detalladas se hacen en el backend
-    
-    // Validacion 1: Campos obligatorios
     if (!form.clientId || !form.toolId || !form.dueDate) {
-      showWarning("Por favor completa todos los campos: Cliente, Herramienta y Fecha de devolucion");
+      showError("Completa todos los campos");
       return;
     }
 
-    // Validacion 2: Fecha valida
-    const dueDate = new Date(form.dueDate);
-    if (isNaN(dueDate.getTime())) {
-      showWarning("Formato de fecha invalido. Por favor selecciona una fecha valida");
-      return;
-    }
-
-    // ✅ El resto de validaciones (cliente activo, multas, etc.) 
-    // se hacen en el BACKEND y retornan mensajes específicos
-    
     try {
       setLoading(true);
-      
-      const body = new URLSearchParams();
-      body.append("clientId", form.clientId);
-      body.append("toolId", form.toolId);
-      body.append("dueDate", form.dueDate);
-
-      await http.post("/api/v1/loans/create", body, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      await http.post("/api/v1/loans/create", null, {
+        params: {
+          clientId: form.clientId,
+          toolId: form.toolId,
+          dueDate: form.dueDate,
+        },
       });
-
-      // ✅ Éxito
+      
+      showSuccess("Préstamo creado correctamente");
       setForm({ clientId: "", toolId: "", dueDate: "" });
       await fetchAll();
-      showSuccess("Prestamo creado exitosamente");
-      
     } catch (err) {
-      console.error("Error al crear prestamo:", err);
+      console.error("Error al crear préstamo:", err);
       
-      // ✅ MEJORADO: El interceptor ya mostró el mensaje del backend
-      // Solo necesitamos logearlo para debugging
-      if (err.userMessage) {
-        console.log("📋 Mensaje específico del backend:", err.userMessage);
-      }
-      
-      // ✅ FALLBACK: Si el interceptor no funcionó, mostrar manualmente
-      if (!err.userMessage && err.response?.data) {
-        const backendMessage = 
-          err.response.data.message || 
-          (typeof err.response.data === 'string' ? err.response.data : null);
+      if (err.response) {
+        const backendMessage = typeof err.response.data === 'string' 
+          ? err.response.data 
+          : err.response.data?.message || null;
         
         if (backendMessage) {
           showError(backendMessage);
+        } else {
+          showError("No se pudo crear el préstamo");
         }
+      } else {
+        showError("Error de conexión");
       }
-      
     } finally {
       setLoading(false);
     }
@@ -176,10 +165,38 @@ export default function Loans() {
     setSelectedLoan(null);
   }
 
-  async function handleReturnSuccess() {
-    handleCloseReturnModal();
-    await fetchAll();
-    showSuccess("Herramienta devuelta exitosamente");
+  async function handleReturnLoan(loanId, isDamaged, isIrreparable) {
+    try {
+      await http.post("/api/v1/loans/return", null, {
+        params: {
+          loanId,
+          isDamaged,
+          isIrreparable,
+        },
+      });
+      
+      showSuccess("Herramienta devuelta exitosamente");
+      handleCloseReturnModal();
+      await fetchAll();
+    } catch (err) {
+      console.error("Error al devolver herramienta:", err);
+      
+      if (err.response) {
+        const backendMessage = typeof err.response.data === 'string' 
+          ? err.response.data 
+          : err.response.data?.message || null;
+        
+        if (backendMessage) {
+          showError(backendMessage);
+        } else {
+          showError("No se pudo devolver la herramienta");
+        }
+      } else {
+        showError("Error de conexión");
+      }
+      
+      throw err;
+    }
   }
 
   const Status = ({ value }) => {
@@ -205,9 +222,22 @@ export default function Loans() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        Gestion de Prestamos
-      </Typography>
+      {/* ✅ Header con título y botón usando Material-UI */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5">
+          Gestion de Prestamos
+        </Typography>
+        
+        {/* ✅ Botón Material-UI */}
+        <Button 
+          variant="contained"
+          startIcon={<RefreshIcon />}
+          onClick={() => fetchAll()} 
+          disabled={loading}
+        >
+          {loading ? "Actualizando..." : "Actualizar"}
+        </Button>
+      </Box>
 
       {/* FORMULARIO CREAR PRESTAMO */}
       <div
@@ -253,29 +283,26 @@ export default function Loans() {
               disabled={loading}
             >
               <option value="">-- Seleccionar --</option>
-              {tools
-                .filter(t => t.status === "Disponible" && t.stock > 0)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id} - {t.name} (Stock: {t.stock})
-                  </option>
-                ))}
+              {tools.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.id} - {t.name} (Stock: {t.stock})
+                </option>
+              ))}
             </select>
           </div>
 
           <div>
-            <label style={labelStyle}>Fecha Devolucion</label>
+            <label style={labelStyle}>Fecha Límite</label>
             <input
               type="date"
               style={inputStyle}
               value={form.dueDate}
               onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
               disabled={loading}
-              min={new Date().toISOString().split('T')[0]}
             />
           </div>
 
-          <div style={{ alignSelf: "end" }}>
+          <div>
             <button type="submit" style={primaryBtn} disabled={loading}>
               {loading ? "Creando..." : "Crear"}
             </button>
@@ -283,34 +310,23 @@ export default function Loans() {
         </form>
       </div>
 
-      {/* TABLA PRESTAMOS ACTIVOS */}
-      <div
-        style={{
-          background: "#fff",
-          padding: 16,
-          borderRadius: 8,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-        }}
-      >
-        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
-          Prestamos Activos
-        </h3>
-
+      {/* TABLA DE PRÉSTAMOS */}
+      <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden" }}>
         <table style={tableStyle}>
           <thead>
             <tr>
               <Th>ID</Th>
               <Th>Cliente</Th>
               <Th>Herramienta</Th>
-              <Th>Fecha Prestamo</Th>
-              <Th>Fecha Limite</Th>
-              <Th>Fecha Devolucion</Th>
+              <Th>Fecha Préstamo</Th>
+              <Th>Fecha Límite</Th>
+              <Th>Fecha Devolución</Th>
               <Th>Costo Arriendo</Th>
               <Th>Multa</Th>
-              <Th>Danado</Th>
+              <Th>Dañado</Th>
               <Th>Irreparable</Th>
               <Th>Estado</Th>
-              <Th>Accion</Th>
+              <Th>Acción</Th>
             </tr>
           </thead>
           <tbody>
@@ -323,23 +339,21 @@ export default function Loans() {
             ) : loans.length === 0 ? (
               <tr>
                 <Td colSpan={12} style={{ textAlign: "center", color: "#94a3b8" }}>
-                  No hay prestamos registrados
+                  No hay préstamos registrados
                 </Td>
               </tr>
             ) : (
               loans.map((loan) => {
                 return (
-                  <tr key={loan.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <tr key={loan.id}>
                     <Td>{loan.id}</Td>
                     <Td>{clientLabel(loan)}</Td>
                     <Td>{toolLabel(loan)}</Td>
                     <Td>{getLoanDate(loan)}</Td>
-                    <Td>{loan.dueDate || loan.due_date || "—"}</Td>
+                    <Td>{loan.dueDate || "—"}</Td>
                     <Td>{loan.returnDate || loan.return_date || "—"}</Td>
-                    <Td>{formatCurrency(loan.rentalCost || loan.rental_cost)}</Td>
-                    <Td style={{ color: (loan.fine || 0) > 0 ? "#dc2626" : "#64748b" }}>
-                      {formatCurrency(loan.fine)}
-                    </Td>
+                    <Td>{formatCurrency(loan.rentalCost || loan.rental_cost || 0)}</Td>
+                    <Td>{formatCurrency(loan.fine || 0)}</Td>
                     <Td>
                       {loan.damaged === true
                         ? "Si"
@@ -381,7 +395,9 @@ export default function Loans() {
         open={returnModalOpen}
         onClose={handleCloseReturnModal}
         loan={selectedLoan}
-        onSuccess={handleReturnSuccess}
+        onConfirm={handleReturnLoan}
+        clientName={selectedLoan ? clientNameOnly(selectedLoan) : ""}
+        toolName={selectedLoan ? toolNameOnly(selectedLoan) : ""}
       />
     </Box>
   );

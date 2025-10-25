@@ -9,10 +9,13 @@ import com.example.demo.Repository.ToolRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
@@ -25,7 +28,7 @@ public class LoanService {
     @Autowired private ToolRepository toolRepository;
     @Autowired private ConfigService configService;
     @Autowired private KardexService kardexService;
-    @Autowired private ClientService clientService;  // ✅ NUEVO
+    @Autowired private ClientService clientService;
 
     /**
      * RF2.1: Crea un préstamo aplicando reglas de negocio
@@ -282,5 +285,88 @@ public class LoanService {
 
     public List<LoanEntity> getAllLoans() {
         return loanRepository.findAll();
+    }
+
+    // ========================================
+    // ✅ NUEVOS MÉTODOS PARA ACTUALIZACIÓN AUTOMÁTICA
+    // ========================================
+
+    /**
+     * ⏰ Tarea programada: Actualizar estados de préstamos
+     *
+     * 🧪 TESTING: Se ejecuta cada minuto para pruebas
+     * 📅 PRODUCCIÓN: Cambiar a "0 1 0 * * *" para ejecutar a las 00:01
+     */
+    @Scheduled(cron = "0 */1 * * * *")  // 🧪 CADA MINUTO (TESTING)
+    // @Scheduled(cron = "0 1 0 * * *")  // 📅 DIARIO 00:01 (PRODUCCIÓN) - Descomentar después
+    @Transactional
+    public void scheduledUpdateLoanStatuses() {
+        String timestamp = LocalDateTime.now().format(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        );
+
+        System.out.println("\n═══════════════════════════════════════════");
+        System.out.println("⏰ [" + timestamp + "] Actualización de préstamos");
+        System.out.println("═══════════════════════════════════════════");
+
+        try {
+            int updated = updateOverdueLoans();
+            System.out.println("✅ " + updated + " préstamo(s) marcado(s) como Atrasado");
+
+            // Actualizar estados de clientes
+            clientService.updateAllClientStates();
+            System.out.println("✅ Estados de clientes actualizados");
+
+        } catch (Exception e) {
+            System.err.println("❌ Error: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        System.out.println("═══════════════════════════════════════════\n");
+    }
+
+    /**
+     * Actualizar préstamos vencidos de "Vigente" a "Atrasado"
+     *
+     * @return Número de préstamos actualizados
+     */
+    @Transactional
+    public int updateOverdueLoans() {
+        LocalDate today = LocalDate.now();
+
+        // Buscar préstamos vigentes con fecha vencida
+        List<LoanEntity> overdueLoans = loanRepository.findAll().stream()
+                .filter(loan ->
+                        "Vigente".equalsIgnoreCase(loan.getStatus()) &&
+                                loan.getReturnDate() == null &&
+                                loan.getDueDate().isBefore(today)
+                )
+                .toList();
+
+        int count = 0;
+        for (LoanEntity loan : overdueLoans) {
+            // Calcular multa
+            long daysLate = ChronoUnit.DAYS.between(loan.getDueDate(), today);
+            double fineDaily = configService.getTarifaMultaDiaria();
+            double totalFine = daysLate * fineDaily;
+
+            // Actualizar préstamo
+            loan.setStatus("Atrasado");
+            loan.setFine(totalFine);
+            loanRepository.save(loan);
+
+            count++;
+
+            System.out.println(String.format(
+                    "  🔴 Préstamo #%d (%s - %s): Vigente → Atrasado (%d día(s), multa: $%.0f)",
+                    loan.getId(),
+                    loan.getClient().getName(),
+                    loan.getTool().getName(),
+                    daysLate,
+                    totalFine
+            ));
+        }
+
+        return count;
     }
 }

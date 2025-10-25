@@ -2,7 +2,10 @@ package com.example.demo.Repository;
 
 import com.example.demo.Entity.ClientEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
 import java.util.List;
 
 public interface ClientRepository extends JpaRepository<ClientEntity, Long> {
@@ -27,6 +30,20 @@ public interface ClientRepository extends JpaRepository<ClientEntity, Long> {
             "AND l.dueDate < CURRENT_DATE " +
             "ORDER BY c.name")
     List<ClientEntity> findClientsWithOverdues();
+
+    /**
+     * Actualizar solo el estado sin validaciones
+     *
+     * Este método actualiza directamente el campo 'state' en la base de datos
+     * sin pasar por las validaciones de Bean Validation, lo cual es necesario
+     * para la tarea programada que actualiza estados masivamente.
+     *
+     * @param clientId ID del cliente
+     * @param newState Nuevo estado ("Activo" o "Restringido")
+     */
+    @Modifying
+    @Query("UPDATE ClientEntity c SET c.state = :newState WHERE c.id = :clientId")
+    void updateClientState(@Param("clientId") Long clientId, @Param("newState") String newState);
 
 }
 
