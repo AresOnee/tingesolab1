@@ -37,7 +37,7 @@ public class LoanService {
      */
     @Transactional
     public LoanEntity createLoan(Long clientId, Long toolId, LocalDate dueDate, String username) {
-        // ✅ NUEVO: Actualizar estado del cliente ANTES de validar
+        // ✅ Actualizar estado del cliente ANTES de validar
         clientService.updateClientStateBasedOnLoans(clientId);
 
         // Validaciones básicas
@@ -68,7 +68,6 @@ public class LoanService {
 
         // ✅ VALIDACIÓN 2: Cliente no debe tener préstamos atrasados o multas pendientes
         if (loanRepository.hasOverduesOrFines(clientId)) {
-            // Buscar préstamos con problemas para dar detalles
             List<LoanEntity> problematicLoans = allLoans.stream()
                     .filter(l -> Objects.equals(l.getClient().getId(), clientId))
                     .filter(l ->
@@ -103,7 +102,6 @@ public class LoanService {
                 }
 
                 errorMessage.append("\nDebe regularizar su situación antes de solicitar un nuevo préstamo.");
-
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, errorMessage.toString());
             }
         }
@@ -115,22 +113,26 @@ public class LoanService {
                             dueDate, today));
         }
 
-        // ✅ VALIDACIÓN 4: Herramienta debe estar "Disponible"
-        if (!"Disponible".equalsIgnoreCase(tool.getStatus())) {
+        // ✅ VALIDACIÓN 4 (MODIFICADA): Stock >= 1
+        int stockTotal = tool.getStock();
+        if (stockTotal < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    String.format("La herramienta '%s' no está disponible. Estado actual: '%s'",
-                            tool.getName(), tool.getStatus()));
+                    String.format("La herramienta '%s' no tiene stock disponible (Stock total: %d)",
+                            tool.getName(), stockTotal));
         }
 
-        // ✅ VALIDACIÓN 5: Stock >= 1
-        int stockActual = tool.getStock();
-        if (stockActual < 1) {
+        // ✅ VALIDACIÓN 4b (NUEVA): Verificar unidades realmente disponibles
+        long unidadesPrestadas = countActiveLoansForTool(toolId);
+        long unidadesDisponibles = stockTotal - unidadesPrestadas;
+
+        if (unidadesDisponibles < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    String.format("La herramienta '%s' no tiene stock disponible (Stock actual: %d)",
-                            tool.getName(), stockActual));
+                    String.format("La herramienta '%s' no tiene unidades disponibles para prestar.\n" +
+                                    "Stock total: %d | Prestadas actualmente: %d | Disponibles: %d",
+                            tool.getName(), stockTotal, unidadesPrestadas, unidadesDisponibles));
         }
 
-        // ✅ VALIDACIÓN 6: Máximo 5 préstamos activos
+        // ✅ VALIDACIÓN 5: Máximo 5 préstamos activos
         long activos = allLoans.stream()
                 .filter(l -> Objects.equals(l.getClient().getId(), clientId) && l.getReturnDate() == null)
                 .count();
@@ -141,7 +143,7 @@ public class LoanService {
                             client.getName()));
         }
 
-        // ✅ VALIDACIÓN 7: No puede tener la misma herramienta activa
+        // ✅ VALIDACIÓN 6: No puede tener la misma herramienta activa
         boolean mismaTool = allLoans.stream()
                 .anyMatch(l ->
                         Objects.equals(l.getClient().getId(), clientId)
@@ -174,9 +176,13 @@ public class LoanService {
         loan.setDamaged(false);
         loan.setIrreparable(false);
 
-        tool.setStock(stockActual - 1);
+        // ✅ CAMBIO CLAVE: NO modificar stock
+        // El stock representa el total de unidades, no las disponibles
 
         LoanEntity saved = loanRepository.save(loan);
+
+        // ✅ Actualizar estado de herramienta dinámicamente
+        updateToolStatus(tool);
         toolRepository.save(tool);
 
         // Registrar en kardex
@@ -220,13 +226,13 @@ public class LoanService {
             loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + (daysLate * fineDaily));
         }
 
-        int stockActual = tool.getStock();
         loan.setDamaged(isDamaged);
         loan.setIrreparable(isIrreparable);
 
         // Procesar según tipo de daño
         if (isDamaged && isIrreparable) {
-            tool.setStatus("Dada de baja");
+            // ✅ CAMBIO: NO modificar stock ni estado manualmente
+            // Daño irreparable: cobrar valor de reposición
             double repoValue = tool.getReplacementValue();
             loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + repoValue);
 
@@ -239,9 +245,8 @@ public class LoanService {
                     loanId
             );
         } else if (isDamaged && !isIrreparable) {
-            tool.setStatus("En reparación");
-            tool.setStock(stockActual + 1);
-
+            // ✅ CAMBIO: NO modificar stock ni estado manualmente
+            // Daño reparable: aplicar cargo de reparación
             double cargoReparacion = configService.getCargoReparacion();
             loan.setFine((loan.getFine() == null ? 0 : loan.getFine()) + cargoReparacion);
 
@@ -254,9 +259,8 @@ public class LoanService {
                     loanId
             );
         } else {
-            tool.setStatus("Disponible");
-            tool.setStock(stockActual + 1);
-
+            // ✅ CAMBIO: NO modificar stock ni estado manualmente
+            // Sin daño: devolución normal
             kardexService.registerMovement(
                     tool.getId(),
                     "DEVOLUCION",
@@ -274,10 +278,13 @@ public class LoanService {
             loan.setStatus("Devuelto");
         }
 
-        toolRepository.save(tool);
         LoanEntity savedLoan = loanRepository.save(loan);
 
-        // ✅ NUEVO: Actualizar estado del cliente después de la devolución
+        // ✅ CLAVE: Actualizar estado de herramienta dinámicamente
+        updateToolStatus(tool);
+        toolRepository.save(tool);
+
+        // ✅ Actualizar estado del cliente después de la devolución
         clientService.updateClientStateBasedOnLoans(loan.getClient().getId());
 
         return savedLoan;
@@ -288,7 +295,83 @@ public class LoanService {
     }
 
     // ========================================
-    // ✅ NUEVOS MÉTODOS PARA ACTUALIZACIÓN AUTOMÁTICA
+    // ✅ NUEVOS MÉTODOS: GESTIÓN DE ESTADO DINÁMICO
+    // ========================================
+
+    /**
+     * ✅ NUEVO: Contar préstamos activos de una herramienta específica
+     *
+     * Un préstamo está activo si no tiene fecha de devolución (returnDate == null)
+     *
+     * @param toolId ID de la herramienta
+     * @return Número de préstamos activos
+     */
+    private long countActiveLoansForTool(Long toolId) {
+        return loanRepository.findAll().stream()
+                .filter(l -> Objects.equals(l.getTool().getId(), toolId))
+                .filter(l -> l.getReturnDate() == null) // Préstamos activos (no devueltos)
+                .count();
+    }
+
+    /**
+     * ✅ NUEVO: Actualizar estado de herramienta basado en disponibilidad real
+     *
+     * Lógica de estado:
+     * 1. Si hay unidades disponibles (stock - préstamos activos > 0) → "Disponible"
+     * 2. Si no hay disponibles pero hay en reparación → "En reparación"
+     * 3. Si todas están prestadas → "Prestada"
+     * 4. Si todas están dadas de baja → "Dada de baja"
+     * 5. Si no hay stock → "Sin stock"
+     *
+     * @param tool Herramienta a actualizar
+     */
+    private void updateToolStatus(ToolEntity tool) {
+        int stockTotal = tool.getStock();
+
+        if (stockTotal == 0) {
+            tool.setStatus("Sin stock");
+            return;
+        }
+
+        // Contar préstamos activos (no devueltos)
+        long prestamosActivos = countActiveLoansForTool(tool.getId());
+
+        // Calcular unidades realmente disponibles
+        long unidadesDisponibles = stockTotal - prestamosActivos;
+
+        // Contar unidades en reparación (devueltas con daño reparable)
+        long enReparacion = loanRepository.findAll().stream()
+                .filter(l -> Objects.equals(l.getTool().getId(), tool.getId()))
+                .filter(l -> l.getReturnDate() != null) // Ya devueltas
+                .filter(l -> Boolean.TRUE.equals(l.getDamaged())) // Con daño
+                .filter(l -> Boolean.FALSE.equals(l.getIrreparable())) // Reparable
+                .count();
+
+        // Contar unidades dadas de baja (devueltas con daño irreparable)
+        long dadasDeBaja = loanRepository.findAll().stream()
+                .filter(l -> Objects.equals(l.getTool().getId(), tool.getId()))
+                .filter(l -> l.getReturnDate() != null) // Ya devueltas
+                .filter(l -> Boolean.TRUE.equals(l.getIrreparable())) // Irreparable
+                .count();
+
+        // Determinar estado según prioridad
+        if (dadasDeBaja >= stockTotal) {
+            // Todas las unidades están dadas de baja
+            tool.setStatus("Dada de baja");
+        } else if (unidadesDisponibles > 0) {
+            // ✅ CLAVE: Hay unidades disponibles para prestar
+            tool.setStatus("Disponible");
+        } else if (enReparacion > 0) {
+            // Todas están prestadas o en reparación
+            tool.setStatus("En reparación");
+        } else {
+            // Todas están prestadas
+            tool.setStatus("Prestada");
+        }
+    }
+
+    // ========================================
+    // ✅ MÉTODOS PARA ACTUALIZACIÓN AUTOMÁTICA
     // ========================================
 
     /**
