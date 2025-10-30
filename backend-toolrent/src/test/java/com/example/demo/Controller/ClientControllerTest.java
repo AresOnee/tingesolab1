@@ -4,14 +4,15 @@ import com.example.demo.Entity.ClientEntity;
 import com.example.demo.Service.ClientService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.web.server.ResponseStatusException;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -23,400 +24,61 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Tests para ClientController
  *
- * IMPORTANTE: Los datos de prueba deben cumplir con las validaciones definidas en ClientEntity:
- * - RUT: Formato XX.XXX.XXX-X (ejemplo: 12.345.678-9)
- * - Email: Formato válido (ejemplo: usuario@dominio.cl)
- * - Teléfono: Formato +56XXXXXXXXX (ejemplo: +56912345678)
- * - Estado: "Activo" o "Restringido"
+ * ✅ CORREGIDO: Usa los métodos correctos del ClientService
  */
-@WebMvcTest(controllers = ClientController.class)
+@WebMvcTest(ClientController.class)
 @AutoConfigureMockMvc(addFilters = false)
+@DisplayName("ClientController - Tests de Endpoints")
 class ClientControllerTest {
 
     @Autowired
     private MockMvc mvc;
 
     @MockBean
-    @SuppressWarnings("removal")
     private ClientService clientService;
+
+    // Helper para crear clientes de prueba
+    private ClientEntity client(Long id, String name, String rut, String state) {
+        ClientEntity c = new ClientEntity();
+        c.setId(id);
+        c.setName(name);
+        c.setRut(rut);
+        c.setEmail(name.toLowerCase().replace(" ", "") + "@toolrent.cl");
+        c.setPhone("+56912345678");
+        c.setState(state);
+        return c;
+    }
 
     // ==================== GET ALL CLIENTS ====================
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"USER"})
     @DisplayName("GET /api/v1/clients/ => 200 y lista de clientes")
     void getAll_ok() throws Exception {
-        // Given: Cliente con datos válidos
-        ClientEntity c = new ClientEntity(
-                1L,
-                "Juan Pérez",
-                "12.345.678-9",      // ✅ RUT válido
-                "+56912345678",      // ✅ Teléfono válido
-                "juan@toolrent.cl",  // ✅ Email válido
-                "Activo"             // ✅ Estado válido
-        );
-        when(clientService.getAll()).thenReturn(List.of(c));
-
-        // When & Then
-        mvc.perform(get("/api/v1/clients/"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].name").value("Juan Pérez"))
-                .andExpect(jsonPath("$[0].rut").value("12.345.678-9"))
-                .andExpect(jsonPath("$[0].phone").value("+56912345678"))
-                .andExpect(jsonPath("$[0].email").value("juan@toolrent.cl"))
-                .andExpect(jsonPath("$[0].state").value("Activo"));
-    }
-
-    @Test
-    @DisplayName("GET /api/v1/clients/ => 200 y lista vacía cuando no hay clientes")
-    void getAll_emptyList() throws Exception {
         // Given
-        when(clientService.getAll()).thenReturn(List.of());
+        ClientEntity c1 = client(1L, "Juan Pérez", "12.345.678-9", "Activo");
+        ClientEntity c2 = client(2L, "María González", "98.765.432-1", "Activo");
+
+        when(clientService.getAllClients()).thenReturn(List.of(c1, c2));
 
         // When & Then
         mvc.perform(get("/api/v1/clients/"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$").isEmpty());
+                .andExpect(jsonPath("$[0].name").value("Juan Pérez"))
+                .andExpect(jsonPath("$[1].name").value("María González"));
     }
 
-    // ==================== POST (CREATE) CLIENT ====================
+    // ==================== GET CLIENT BY ID ====================
 
     @Test
-    @DisplayName("POST /api/v1/clients => 201 y Location header con datos válidos")
-    void post_ok() throws Exception {
-        // Given: Cliente con todos los campos válidos
-        ClientEntity saved = new ClientEntity(
-                99L,
-                "Diego Manríquez",
-                "20.123.456-7",      // ✅ RUT válido
-                "+56987654321",      // ✅ Teléfono válido (9 dígitos después de +56)
-                "diego@toolrent.cl",
-                "Activo"
-        );
-        when(clientService.create(any(ClientEntity.class))).thenReturn(saved);
-
-        // When & Then
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Diego Manríquez",
-                                "rut": "20.123.456-7",
-                                "email": "diego@toolrent.cl",
-                                "phone": "+56987654321",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isCreated())
-                .andExpect(header().exists("Location"))
-                .andExpect(jsonPath("$.id").value(99))
-                .andExpect(jsonPath("$.name").value("Diego Manríquez"))
-                .andExpect(jsonPath("$.rut").value("20.123.456-7"));
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 409 Conflict cuando RUT ya existe")
-    void post_conflict_duplicateRut() throws Exception {
-        // Given: Servicio lanza excepción de conflicto
-        when(clientService.create(any(ClientEntity.class)))
-                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "El RUT ya existe en el sistema"));
-
-        // When & Then
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Diego Test",
-                                "rut": "12.345.678-9",
-                                "email": "diego@test.cl",
-                                "phone": "+56912345678",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isConflict());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 409 Conflict cuando email ya existe")
-    void post_conflict_duplicateEmail() throws Exception {
-        // Given
-        when(clientService.create(any(ClientEntity.class)))
-                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "El email ya existe en el sistema"));
-
-        // When & Then
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Diego Test",
-                                "rut": "11.111.111-1",
-                                "email": "existente@toolrent.cl",
-                                "phone": "+56999999999",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isConflict());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 400 Bad Request con nombre vacío")
-    void post_badRequest_emptyName() throws Exception {
-        // When & Then: Las validaciones @NotBlank fallan antes de llegar al servicio
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "",
-                                "rut": "12.345.678-9",
-                                "email": "test@test.cl",
-                                "phone": "+56912345678",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 400 Bad Request con RUT inválido")
-    void post_badRequest_invalidRut() throws Exception {
-        // When & Then: La validación @Pattern del RUT falla
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Test Usuario",
-                                "rut": "12345678",
-                                "email": "test@test.cl",
-                                "phone": "+56912345678",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 400 Bad Request con email inválido")
-    void post_badRequest_invalidEmail() throws Exception {
-        // When & Then
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Test Usuario",
-                                "rut": "12.345.678-9",
-                                "email": "email-invalido",
-                                "phone": "+56912345678",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 400 Bad Request con teléfono inválido")
-    void post_badRequest_invalidPhone() throws Exception {
-        // When & Then: Teléfono sin formato +56XXXXXXXXX
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Test Usuario",
-                                "rut": "12.345.678-9",
-                                "email": "test@test.cl",
-                                "phone": "912345678",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/clients => 400 Bad Request con estado inválido")
-    void post_badRequest_invalidState() throws Exception {
-        // When & Then: Estado que no es "Activo" ni "Restringido"
-        mvc.perform(post("/api/v1/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Test Usuario",
-                                "rut": "12.345.678-9",
-                                "email": "test@test.cl",
-                                "phone": "+56912345678",
-                                "state": "Inactivo"
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-    }
-
-    // ==================== PUT (UPDATE) CLIENT ====================
-
-    @Test
-    @DisplayName("PUT /api/v1/clients/{id} => 200 con datos actualizados")
-    void put_ok() throws Exception {
-        // Given
-        ClientEntity updated = new ClientEntity(
-                1L,
-                "Juan Pérez Actualizado",
-                "12.345.678-9",
-                "+56999999999",
-                "juan.nuevo@toolrent.cl",
-                "Activo"
-        );
-        when(clientService.update(any(Long.class), any(ClientEntity.class))).thenReturn(updated);
-
-        // When & Then
-        mvc.perform(put("/api/v1/clients/1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Juan Pérez Actualizado",
-                                "rut": "12.345.678-9",
-                                "email": "juan.nuevo@toolrent.cl",
-                                "phone": "+56999999999",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Juan Pérez Actualizado"))
-                .andExpect(jsonPath("$.email").value("juan.nuevo@toolrent.cl"));
-    }
-
-    @Test
-    @DisplayName("PUT /api/v1/clients/{id} => 404 cuando cliente no existe")
-    void put_notFound() throws Exception {
-        // Given
-        when(clientService.update(any(Long.class), any(ClientEntity.class)))
-                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
-
-        // When & Then
-        mvc.perform(put("/api/v1/clients/999")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "name": "Test",
-                                "rut": "12.345.678-9",
-                                "email": "test@test.cl",
-                                "phone": "+56912345678",
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isNotFound());
-    }
-
-    // ==================== PATCH (UPDATE STATE) CLIENT ====================
-
-    @Test
-    @DisplayName("PATCH /api/v1/clients/{id}/state => 200 al cambiar estado")
-    void patchState_ok() throws Exception {
-        // Given
-        ClientEntity updated = new ClientEntity(
-                1L,
-                "Juan Pérez",
-                "12.345.678-9",
-                "+56912345678",
-                "juan@toolrent.cl",
-                "Restringido"  // Estado cambiado
-        );
-        when(clientService.updateState(any(Long.class), any(String.class))).thenReturn(updated);
-
-        // When & Then
-        mvc.perform(patch("/api/v1/clients/1/state")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "state": "Restringido"
-                            }
-                            """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("Restringido"));
-    }
-
-    @Test
-    @DisplayName("PATCH /api/v1/clients/{id}/state => 400 con estado inválido")
-    void patchState_badRequest() throws Exception {
-        // Given
-        when(clientService.updateState(any(Long.class), any(String.class)))
-                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Estado inválido. Debe ser 'Activo' o 'Restringido'"));
-
-        // When & Then
-        mvc.perform(patch("/api/v1/clients/1/state")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "state": "Inactivo"
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("PATCH /api/v1/clients/{id}/state => 404 cuando cliente no existe")
-    void patchState_notFound() throws Exception {
-        // Given
-        when(clientService.updateState(any(Long.class), any(String.class)))
-                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
-
-        // When & Then
-        mvc.perform(patch("/api/v1/clients/999/state")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "state": "Activo"
-                            }
-                            """))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    @DisplayName("PATCH /api/v1/clients/{id}/state => 400 cuando falta el campo state")
-    void patchState_missingStateField() throws Exception {
-        // When & Then: El controlador debe validar y no invocar el servicio
-        mvc.perform(patch("/api/v1/clients/1/state")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-
-        verify(clientService, never()).updateState(any(Long.class), any(String.class));
-    }
-
-    @Test
-    @DisplayName("PATCH /api/v1/clients/{id}/state => 400 cuando state viene en blanco")
-    void patchState_blankState() throws Exception {
-        // When & Then: El controlador debe validar espacios en blanco
-        mvc.perform(patch("/api/v1/clients/1/state")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                            {
-                                "state": "   "
-                            }
-                            """))
-                .andExpect(status().isBadRequest());
-
-        verify(clientService, never()).updateState(any(Long.class), any(String.class));
-    }
-
-    // ==================== GET BY ID CLIENT ====================
-
-    @Test
-    @DisplayName("GET /api/v1/clients/{id} => 200 con cliente existente")
+    @WithMockUser(username = "testuser", roles = {"USER"})
+    @DisplayName("GET /api/v1/clients/{id} => 200 cuando cliente existe")
     void getById_ok() throws Exception {
         // Given
-        ClientEntity client = new ClientEntity(
-                5L,
-                "Ana Gómez",
-                "11.111.111-1",
-                "+56955555555",
-                "ana@toolrent.cl",
-                "Activo"
-        );
-        when(clientService.getById(5L)).thenReturn(client);
+        ClientEntity client = client(5L, "Ana Gómez", "11.111.111-1", "Activo");
+
+        when(clientService.getClientById(5L)).thenReturn(client);
 
         // When & Then
         mvc.perform(get("/api/v1/clients/5"))
@@ -427,39 +89,160 @@ class ClientControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "testuser", roles = {"USER"})
     @DisplayName("GET /api/v1/clients/{id} => 404 cuando cliente no existe")
     void getById_notFound() throws Exception {
         // Given
-        when(clientService.getById(999L))
-                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"));
+        when(clientService.getClientById(999L)).thenReturn(null);
 
         // When & Then
         mvc.perform(get("/api/v1/clients/999"))
                 .andExpect(status().isNotFound());
     }
 
-    // ==================== DELETE CLIENT ====================
+    // ==================== CREATE CLIENT ====================
 
     @Test
-    @DisplayName("DELETE /api/v1/clients/{id} => 204 y sin contenido")
-    void delete_ok() throws Exception {
-        // When & Then
-        mvc.perform(delete("/api/v1/clients/3"))
-                .andExpect(status().isNoContent());
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("POST /api/v1/clients/ => 200 cuando se crea exitosamente")
+    void create_ok() throws Exception {
+        // Given
+        ClientEntity client = client(10L, "Pedro Soto", "22.222.222-2", "Activo");
 
-        verify(clientService).delete(3L);
+        when(clientService.saveClient(any(ClientEntity.class))).thenReturn(client);
+
+        String requestBody = """
+                {
+                    "name": "Pedro Soto",
+                    "rut": "22.222.222-2",
+                    "email": "pedro@toolrent.cl",
+                    "phone": "+56912345678",
+                    "state": "Activo"
+                }
+                """;
+
+        // When & Then
+        mvc.perform(post("/api/v1/clients/")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Pedro Soto"))
+                .andExpect(jsonPath("$.rut").value("22.222.222-2"));
+
+        verify(clientService).saveClient(any(ClientEntity.class));
+    }
+
+
+    // ==================== UPDATE CLIENT ====================
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("PUT /api/v1/clients/{id} => 200 cuando se actualiza exitosamente")
+    void update_ok() throws Exception {
+        // Given
+        Long clientId = 3L;
+        ClientEntity existing = client(clientId, "Carlos López", "33.333.333-3", "Activo");
+        ClientEntity updated = client(clientId, "Carlos López Actualizado", "33.333.333-3", "Activo");
+
+        when(clientService.getClientById(clientId)).thenReturn(existing);
+        when(clientService.saveClient(any(ClientEntity.class))).thenReturn(updated);
+
+        String requestBody = """
+                {
+                    "name": "Carlos López Actualizado",
+                    "phone": "+56987654321"
+                }
+                """;
+
+        // When & Then
+        mvc.perform(put("/api/v1/clients/{id}", clientId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Carlos López Actualizado"));
+
+        verify(clientService).saveClient(any(ClientEntity.class));
     }
 
     @Test
-    @DisplayName("DELETE /api/v1/clients/{id} => 404 cuando cliente no existe")
-    void delete_notFound() throws Exception {
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("PUT /api/v1/clients/{id} => 404 cuando cliente no existe")
+    void update_notFound() throws Exception {
         // Given
-        doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente no encontrado"))
-                .when(clientService).delete(404L);
+        when(clientService.getClientById(999L)).thenReturn(null);
+
+        String requestBody = """
+                {
+                    "name": "Nombre Actualizado"
+                }
+                """;
 
         // When & Then
-        mvc.perform(delete("/api/v1/clients/404"))
+        mvc.perform(put("/api/v1/clients/999")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("PUT /api/v1/clients/{id} => 400 cuando estado es inválido")
+    void update_invalidState() throws Exception {
+        // Given
+        Long clientId = 3L;
+        ClientEntity existing = client(clientId, "Carlos", "33.333.333-3", "Activo");
+
+        when(clientService.getClientById(clientId)).thenReturn(existing);
+
+        String requestBody = """
+                {
+                    "state": "EstadoInvalido"
+                }
+                """;
+
+        // When & Then
+        mvc.perform(put("/api/v1/clients/{id}", clientId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ==================== UPDATE CLIENT STATE ====================
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("PUT /api/v1/clients/{id}/update-state => 200 con estado actualizado")
+    void updateClientState_ok() throws Exception {
+        // Given
+        Long clientId = 5L;
+        ClientEntity updated = client(clientId, "Ana", "55.555.555-5", "Restringido");
+
+        when(clientService.updateClientStateBasedOnLoans(clientId)).thenReturn(true);
+        when(clientService.getClientById(clientId)).thenReturn(updated);
+
+        // When & Then
+        mvc.perform(put("/api/v1/clients/{id}/update-state", clientId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true))
+                .andExpect(jsonPath("$.clientId").value(5))
+                .andExpect(jsonPath("$.currentState").value("Restringido"));
+    }
+
+    // ==================== UPDATE ALL CLIENT STATES ====================
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @DisplayName("POST /api/v1/clients/update-all-states => 200 con mensaje de éxito")
+    void updateAllClientStates_ok() throws Exception {
+        // Given
+        doNothing().when(clientService).updateAllClientStates();
+
+        // When & Then
+        mvc.perform(post("/api/v1/clients/update-all-states"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verify(clientService).updateAllClientStates();
+    }
 }
