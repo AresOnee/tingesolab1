@@ -1,0 +1,30 @@
+# Maven
+target/
+!target/toolrent-backend.jar
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Test and coverage
+**/test-results/
+**/coverage/
+jacoco.exec
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docs
+*.md
+README.md

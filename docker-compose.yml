@@ -1,0 +1,190 @@
+# ============================================
+# DOCKER COMPOSE - TOOLRENT APPLICATION
+# ============================================
+# Servicios: MySQL, Backend (3 réplicas), Nginx LB, Frontend, Keycloak
+
+version: '3.8'
+
+services:
+  # ====== BASE DE DATOS MYSQL ======
+  mysql:
+    image: mysql:8.0
+    container_name: toolrent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: toolrent
+      MYSQL_USER: toolrent
+      MYSQL_PASSWORD: toolrent123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ====== KEYCLOAK (IAM) ======
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    container_name: toolrent-keycloak
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: mysql
+      KC_DB_URL: jdbc:mysql://mysql:3306/keycloak
+      KC_DB_USERNAME: root
+      KC_DB_PASSWORD: root123
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 9090
+      KC_HTTP_PORT: 8080
+    ports:
+      - "9090:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ====== BACKEND - REPLICA 1 ======
+  backend-1:
+    image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
+    container_name: toolrent-backend-1
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: mysql
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
+      SPRING_DATASOURCE_USERNAME: toolrent
+      SPRING_DATASOURCE_PASSWORD: toolrent123
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+    depends_on:
+      mysql:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ====== BACKEND - REPLICA 2 ======
+  backend-2:
+    image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
+    container_name: toolrent-backend-2
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: mysql
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
+      SPRING_DATASOURCE_USERNAME: toolrent
+      SPRING_DATASOURCE_PASSWORD: toolrent123
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+    depends_on:
+      mysql:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ====== BACKEND - REPLICA 3 ======
+  backend-3:
+    image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
+    container_name: toolrent-backend-3
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: mysql
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
+      SPRING_DATASOURCE_USERNAME: toolrent
+      SPRING_DATASOURCE_PASSWORD: toolrent123
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+    depends_on:
+      mysql:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ====== NGINX LOAD BALANCER (para Backend) ======
+  nginx-backend:
+    image: nginx:1.25-alpine
+    container_name: toolrent-nginx-backend
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx-backend.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ====== FRONTEND ======
+  frontend:
+    image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
+    container_name: toolrent-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - nginx-backend
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ====== NETWORKS ======
+networks:
+  toolrent-network:
+    driver: bridge
+    name: toolrent-network
+
+# ====== VOLUMES ======
+volumes:
+  mysql_data:
+    driver: local
+    name: toolrent-mysql-data
