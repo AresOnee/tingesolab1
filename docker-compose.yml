@@ -71,8 +71,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
       SPRING_DATASOURCE_USERNAME: toolrent
       SPRING_DATASOURCE_PASSWORD: toolrent123
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://host.docker.internal:9090/realms/sisgr-realm/protocol/openid-connect/certs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -100,8 +99,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
       SPRING_DATASOURCE_USERNAME: toolrent
       SPRING_DATASOURCE_PASSWORD: toolrent123
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://host.docker.internal:9090/realms/sisgr-realm/protocol/openid-connect/certs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -129,8 +127,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
       SPRING_DATASOURCE_USERNAME: toolrent
       SPRING_DATASOURCE_PASSWORD: toolrent123
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://host.docker.internal:9090/realms/sisgr-realm/protocol/openid-connect/certs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
