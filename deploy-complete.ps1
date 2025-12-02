@@ -199,11 +199,11 @@ Write-Host ""
 if (!$SkipData) {
     Write-Step "Importando datos de ejemplo desde seed-data.sql..."
 
-    Get-Content seed-data.sql | docker exec -i toolrent-mysql mysql -uroot -proot123 toolrent
+    Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Fallo al importar datos de ejemplo"
-        Write-Info "Puedes intentar manualmente: docker exec -i toolrent-mysql mysql -uroot -proot123 toolrent < seed-data.sql"
+        Write-Info "Puedes intentar manualmente: Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent"
         exit 1
     }
 

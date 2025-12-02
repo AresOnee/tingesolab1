@@ -6,12 +6,12 @@ Para poblar la base de datos con datos de prueba realistas:
 
 ```powershell
 # Windows PowerShell
-docker exec -i toolrent-mysql mysql -uroot -proot123 toolrent < seed-data.sql
+Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
 ```
 
 ```bash
 # Linux/Mac
-docker exec -i toolrent-mysql mysql -uroot -proot123 toolrent < seed-data.sql
+docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent < seed-data.sql
 ```
 
 ## 📊 Datos Incluidos
