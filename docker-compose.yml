@@ -52,7 +52,7 @@ services:
     networks:
       - toolrent-network
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && exec 3>&- && exec 3<&-"]
       interval: 15s
       timeout: 5s
       retries: 10
