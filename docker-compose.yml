@@ -71,8 +71,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
       SPRING_DATASOURCE_USERNAME: toolrent
       SPRING_DATASOURCE_PASSWORD: toolrent123
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
@@ -98,8 +100,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
       SPRING_DATASOURCE_USERNAME: toolrent
       SPRING_DATASOURCE_PASSWORD: toolrent123
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
@@ -125,8 +129,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toolrent
       SPRING_DATASOURCE_USERNAME: toolrent
       SPRING_DATASOURCE_PASSWORD: toolrent123
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://host.docker.internal:9090/realms/sisgr-realm
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
