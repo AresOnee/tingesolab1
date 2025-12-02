@@ -96,3 +96,11 @@ spring-boot-devtools.properties
 
 # ====== KEYCLOAK DATA (si se genera localmente) ======
 **/keycloak-data/
+
+# ====== DATABASE BACKUPS ======
+# Excluir backups personales, pero permitir seed-data.sql
+backup_*.sql
+**/backups/
+*.dump
+# Permitir seed-data.sql para datos de ejemplo
+!seed-data.sql
