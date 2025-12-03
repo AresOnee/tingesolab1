@@ -19,7 +19,7 @@ export default function Navbar() {
     >
       <Toolbar>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Sistema de Gestión de Herramientas
+          Sistema de Gestión de Herramientas Toolrent
         </Typography>
         <Typography sx={{ mr: 2 }}>{keycloak?.tokenParsed?.preferred_username}</Typography>
         <Button color="inherit" onClick={() => keycloak.logout({ redirectUri: window.location.origin })}>
