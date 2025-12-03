@@ -94,7 +94,11 @@ public class SecurityConfig {
                 "http://localhost:5173",      // Frontend desarrollo (npm run dev)
                 "http://127.0.0.1:5173",      // Frontend desarrollo (IP)
                 "http://localhost",           // Frontend Docker (puerto 80)
-                "http://127.0.0.1"            // Frontend Docker (IP puerto 80)
+                "http://127.0.0.1",            // Frontend Docker (IP puerto 80)
+                "http://localhost:8090", // <--- Añadir puerto del backend
+                "http://127.0.0.1:8090", // <--- Añadir IP del backend
+                "http://0.0.0.0:8090",   // <--- Añadir 0.0.0.0
+                "http://0.0.0.0"         // <--- Añadir 0.0.0.0
         ));
         c.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
         c.setAllowedHeaders(Arrays.asList("Authorization","Content-Type","Cache-Control","X-Requested-With"));
