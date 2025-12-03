@@ -540,8 +540,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -598,8 +598,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -642,8 +642,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -685,8 +685,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -728,8 +728,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -797,8 +797,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -855,8 +855,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     },
@@ -865,7 +865,7 @@
       "clientId": "sisgr-frontend",
       "name": "",
       "description": "",
-      "rootUrl": "http://localhost:5173",
+      "rootUrl": "http://localhost",
       "adminUrl": "",
       "baseUrl": "",
       "surrogateAuthRequired": false,
@@ -873,10 +873,10 @@
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
-        "http://localhost:5173/*"
+        "http://localhost/*"
       ],
       "webOrigins": [
-        "http://localhost:5173"
+        "http://localhost"
       ],
       "notBefore": 0,
       "bearerOnly": false,
@@ -970,8 +970,8 @@
       "optionalClientScopes": [
         "address",
         "phone",
-        "organization",
         "offline_access",
+        "organization",
         "microprofile-jwt"
       ]
     }
