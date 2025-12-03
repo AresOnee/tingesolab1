@@ -5,6 +5,10 @@
 -- del sistema según enunciado y rúbrica
 -- ============================================
 
+-- Configurar encoding UTF-8
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
+
 -- Limpiar datos existentes (orden importante por foreign keys)
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE kardex;
