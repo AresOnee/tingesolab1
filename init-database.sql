@@ -1,22 +1,26 @@
 -- ============================================
 -- INICIALIZACIÓN DE BASE DE DATOS - TOOLRENT
 -- ============================================
--- Crea la base de datos con UTF-8 correcto
+-- Crea las bases de datos con UTF-8 correcto
 -- ============================================
 
--- Eliminar base de datos si existe
-DROP DATABASE IF EXISTS toolrent;
-
--- Crear base de datos con UTF-8
-CREATE DATABASE toolrent
+-- Crear base de datos toolrent con UTF-8
+CREATE DATABASE IF NOT EXISTS toolrent
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
--- Usar la base de datos
-USE toolrent;
+-- Crear base de datos keycloak con UTF-8
+CREATE DATABASE IF NOT EXISTS keycloak
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
 
 -- Verificar configuración
-SELECT @@character_set_database, @@collation_database;
+USE toolrent;
+SELECT @@character_set_database AS toolrent_charset, @@collation_database AS toolrent_collation;
+
+USE keycloak;
+SELECT @@character_set_database AS keycloak_charset, @@collation_database AS keycloak_collation;
 
 -- Mensaje de confirmación
-SELECT 'Base de datos toolrent creada con UTF-8 correctamente' AS resultado;
+SELECT 'Bases de datos toolrent y keycloak creadas con UTF-8 correctamente' AS resultado;
+
