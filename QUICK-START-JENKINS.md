@@ -34,7 +34,7 @@ cd tingesolab1
 
 ### 2. Acceder a Jenkins (30 segundos)
 
-1. Abrir: **http://localhost:8080**
+1. Abrir: **http://localhost:8081**
 2. Ingresar la contraseña mostrada por el script
 3. Click: **"Install suggested plugins"**
 4. Esperar a que instale (~2 minutos)
@@ -133,7 +133,7 @@ cd tingesolab1
 
 Antes de la evaluación, verificar:
 
-- [ ] Jenkins corriendo en http://localhost:8080
+- [ ] Jenkins corriendo en http://localhost:8081
 - [ ] Usuario admin creado
 - [ ] Credenciales Docker Hub configuradas
 - [ ] Pipeline `ToolRent-Pipeline` creado

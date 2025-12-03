@@ -85,7 +85,7 @@ Write-Info "Esto puede tomar 1-2 minutos en la primera ejecucion..."
 docker run -d `
     --name jenkins `
     --restart unless-stopped `
-    -p 8080:8080 `
+    -p 8081:8080 `
     -p 50000:50000 `
     -v jenkins_home:/var/jenkins_home `
     -v //var/run/docker.sock:/var/run/docker.sock `
@@ -112,7 +112,7 @@ while ($attempt -lt $maxAttempts -and !$jenkinsReady) {
     Write-Host "  Intento $attempt/$maxAttempts..." -NoNewline
 
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8080" -TimeoutSec 2 -ErrorAction SilentlyContinue
+        $response = Invoke-WebRequest -Uri "http://localhost:8081" -TimeoutSec 2 -ErrorAction SilentlyContinue
         if ($response.StatusCode -eq 200 -or $response.StatusCode -eq 403) {
             $jenkinsReady = $true
             Write-Host " OK" -ForegroundColor Green
@@ -188,13 +188,13 @@ Write-Host "JENKINS CONFIGURADO EXITOSAMENTE" -ForegroundColor Green
 Write-Host "================================================" -ForegroundColor Blue
 Write-Host ""
 Write-Host "Accede a Jenkins en:" -ForegroundColor Yellow
-Write-Host "  URL: http://localhost:8080" -ForegroundColor Green
+Write-Host "  URL: http://localhost:8081" -ForegroundColor Green
 Write-Host ""
 Write-Host "Contraseña inicial de administrador:" -ForegroundColor Yellow
 Write-Host "  $initialPassword" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Siguientes pasos:" -ForegroundColor Yellow
-Write-Host "  1. Abre http://localhost:8080 en tu navegador" -ForegroundColor White
+Write-Host "  1. Abre http://localhost:8081 en tu navegador" -ForegroundColor White
 Write-Host "  2. Ingresa la contraseña inicial mostrada arriba" -ForegroundColor White
 Write-Host "  3. Click en 'Install suggested plugins'" -ForegroundColor White
 Write-Host "  4. Crea un usuario administrador" -ForegroundColor White
