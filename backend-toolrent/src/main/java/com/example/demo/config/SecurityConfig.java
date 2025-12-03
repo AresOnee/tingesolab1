@@ -14,8 +14,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest; // <- IMPORTANTE
+import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 
 import java.util.*;
 
@@ -23,28 +22,31 @@ import java.util.*;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    /** Cadena #0: SOLO endpoints de Actuator → públicos */
     @Bean
     @Order(0)
     public SecurityFilterChain actuatorSecurity(HttpSecurity http) throws Exception {
         return http
-                .securityMatcher(EndpointRequest.toAnyEndpoint())   // match a /actuator/**
+                .securityMatcher(EndpointRequest.toAnyEndpoint())
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
                 .build();
     }
 
-    /** Cadena #1: Resto de la app → protegida con JWT */
     @Bean
     @Order(1)
     public SecurityFilterChain appSecurity(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(Customizer.withDefaults())
+                .cors(Customizer.withDefaults()) // Esto busca el bean corsConfigurationSource
                 .authorizeHttpRequests(auth -> auth
+                        // 🔥 CRÍTICO: Permitir TODOS los OPTIONS sin token
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // Swagger si lo usas (opcional):
+
+                        // Endpoints públicos (Swagger, etc)
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+
+                        // El resto requiere autenticación
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth -> oauth
@@ -54,13 +56,11 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** Convierte roles de Keycloak (realm + clientes) a ROLE_* */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
             Collection<GrantedAuthority> out = new ArrayList<>();
-
             Object realmAccessObj = jwt.getClaims().get("realm_access");
             if (realmAccessObj instanceof Map<?, ?> realmAccess) {
                 Object rolesObj = realmAccess.get("roles");
@@ -68,7 +68,6 @@ public class SecurityConfig {
                     roles.forEach(r -> out.add(new SimpleGrantedAuthority("ROLE_" + String.valueOf(r))));
                 }
             }
-
             Object resourceAccessObj = jwt.getClaims().get("resource_access");
             if (resourceAccessObj instanceof Map<?, ?> resourceAccess) {
                 for (Object v : resourceAccess.values()) {
@@ -80,33 +79,29 @@ public class SecurityConfig {
                     }
                 }
             }
-
             return out;
         });
         return converter;
     }
 
-    /** CORS para el front en Vite y Docker */
+    /**
+     * 🔥 CONFIGURACIÓN CORS QUE PERMITE TODO DESDE DOCKER
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOrigins(Arrays.asList(
-                "http://localhost:5173",      // Frontend desarrollo (npm run dev)
-                "http://127.0.0.1:5173",      // Frontend desarrollo (IP)
-                "http://localhost",           // Frontend Docker (puerto 80)
-                "http://127.0.0.1",            // Frontend Docker (IP puerto 80)
-                "http://localhost:8090", // <--- Añadir puerto del backend
-                "http://127.0.0.1:8090", // <--- Añadir IP del backend
-                "http://0.0.0.0:8090",   // <--- Añadir 0.0.0.0
-                "http://0.0.0.0"         // <--- Añadir 0.0.0.0
-        ));
-        c.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
-        c.setAllowedHeaders(Arrays.asList("Authorization","Content-Type","Cache-Control","X-Requested-With"));
-        c.setExposedHeaders(Arrays.asList("Authorization"));
-        c.setAllowCredentials(true);
+        CorsConfiguration configuration = new CorsConfiguration();
 
-        UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
-        src.registerCorsConfiguration("/**", c);
-        return src;
+        // ✅ Usamos AllowedOriginPatterns en lugar de AllowedOrigins
+        // Esto permite que el navegador envíe credenciales (cookies/tokens) desde CUALQUIER origen
+        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setExposedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }
