@@ -89,7 +89,6 @@ docker run -d `
     -p 50000:50000 `
     -v jenkins_home:/var/jenkins_home `
     -v //var/run/docker.sock:/var/run/docker.sock `
-    -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" `
     jenkins/jenkins:lts
 
 if ($LASTEXITCODE -ne 0) {
@@ -173,9 +172,10 @@ if ($DockerHubUsername -eq "" -or $DockerHubPassword -eq "") {
     }
 
     if ($DockerHubPassword -eq "") {
-        $DockerHubPassword = Read-Host "Ingresa tu password de Docker Hub" -AsSecureString
-        $DockerHubPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [Runtime.InteropServices.Marshal]::SecureStringToBSTR($DockerHubPassword))
+        $DockerHubPasswordSecure = Read-Host "Ingresa tu password de Docker Hub" -AsSecureString
+        $BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($DockerHubPasswordSecure)
+        $DockerHubPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
     }
 }
 
