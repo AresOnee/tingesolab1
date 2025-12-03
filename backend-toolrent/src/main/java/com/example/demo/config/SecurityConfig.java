@@ -86,13 +86,15 @@ public class SecurityConfig {
         return converter;
     }
 
-    /** CORS para el front en Vite */
+    /** CORS para el front en Vite y Docker */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration c = new CorsConfiguration();
         c.setAllowedOrigins(Arrays.asList(
-                "http://localhost:5173",
-                "http://127.0.0.1:5173"
+                "http://localhost:5173",      // Frontend desarrollo (npm run dev)
+                "http://127.0.0.1:5173",      // Frontend desarrollo (IP)
+                "http://localhost",           // Frontend Docker (puerto 80)
+                "http://127.0.0.1"            // Frontend Docker (IP puerto 80)
         ));
         c.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
         c.setAllowedHeaders(Arrays.asList("Authorization","Content-Type","Cache-Control","X-Requested-With"));
