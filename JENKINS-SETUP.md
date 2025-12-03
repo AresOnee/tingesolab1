@@ -22,7 +22,7 @@ docker volume create jenkins_home
 # 2. Ejecutar Jenkins en Docker
 docker run -d `
   --name jenkins `
-  -p 8080:8080 `
+  -p 8081:8080 `
   -p 50000:50000 `
   -v jenkins_home:/var/jenkins_home `
   -v //var/run/docker.sock:/var/run/docker.sock `
@@ -37,7 +37,7 @@ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 1. Descargar Jenkins desde: https://www.jenkins.io/download/
 2. Ejecutar el instalador `.msi`
 3. Seguir el asistente de instalación
-4. Acceder a: http://localhost:8080
+4. Acceder a: http://localhost:8081
 
 ---
 
@@ -45,7 +45,7 @@ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 ### 2.1 Primera Configuración
 
-1. **Acceder a Jenkins**: http://localhost:8080
+1. **Acceder a Jenkins**: http://localhost:8081
 2. **Ingresar contraseña inicial** (obtenida en paso anterior)
 3. **Instalar plugins sugeridos**
 4. **Crear usuario administrador**:
@@ -205,7 +205,7 @@ Si tu repositorio es privado:
 
 **Ver Stages Visuales:**
 1. Instalar Blue Ocean plugin
-2. Acceder a: http://localhost:8080/blue/
+2. Acceder a: http://localhost:8081/blue/
 3. Ver pipeline visual con stages
 
 ### 6.3 Resultados Esperados
@@ -319,7 +319,7 @@ docker exec jenkins docker login -u username -p password
 ### Acceder al Reporte HTML
 
 ```
-http://localhost:8080/job/ToolRent-Pipeline/lastBuild/jacoco/
+http://localhost:8081/job/ToolRent-Pipeline/lastBuild/jacoco/
 ```
 
 ---
@@ -370,7 +370,7 @@ environment {
 
 ### Antes de la evaluación, verificar:
 
-- [ ] Jenkins corriendo en http://localhost:8080
+- [ ] Jenkins corriendo en http://localhost:8081
 - [ ] Credenciales de Docker Hub configuradas
 - [ ] Pipeline `ToolRent-Pipeline` creado
 - [ ] Al menos 1 build exitoso
