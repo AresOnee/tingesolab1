@@ -241,9 +241,9 @@ if (!$SkipData) {
     Write-Info "Verificando caracteres acentuados..."
     $verification = docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent -e "SELECT name FROM clients LIMIT 1" 2>$null
     if ($verification -match "María") {
-        Write-Success "Datos de ejemplo importados correctamente con UTF-8 ✓"
+        Write-Success "Datos de ejemplo importados correctamente con UTF-8"
     } else {
-        Write-Host "[WARNING] Los datos se importaron pero puede haber problemas de codificación" -ForegroundColor Yellow
+        Write-Host "ADVERTENCIA: Los datos se importaron pero puede haber problemas de codificacion" -ForegroundColor Yellow
     }
 
     # Limpiar archivo temporal
@@ -273,19 +273,19 @@ Write-Host "================================================" -ForegroundColor B
 Write-Host "DESPLIEGUE COMPLETADO EXITOSAMENTE" -ForegroundColor Green
 Write-Host "================================================" -ForegroundColor Blue
 Write-Host ""
-Write-Host "Puedes acceder a la aplicación en:" -ForegroundColor Yellow
+Write-Host "Puedes acceder a la aplicacion en:" -ForegroundColor Yellow
 Write-Host "  - Frontend:       http://localhost:5173" -ForegroundColor Green
 Write-Host "  - Backend API:    http://localhost:8090/actuator/health" -ForegroundColor Green
 Write-Host "  - Keycloak Admin: http://localhost:9090 (admin/admin)" -ForegroundColor Green
 Write-Host ""
 Write-Host "Datos de ejemplo importados:" -ForegroundColor Yellow
-Write-Host "  - 9 Clientes (7 Activos + 2 Restringidos)" -ForegroundColor White
-Write-Host "  - 19 Herramientas en 7 categorías" -ForegroundColor White
-Write-Host "  - 18 Préstamos (activos, atrasados, cerrados)" -ForegroundColor White
+Write-Host "  - 9 Clientes" -ForegroundColor White
+Write-Host "  - 19 Herramientas en 7 categorias" -ForegroundColor White
+Write-Host "  - 18 Prestamos" -ForegroundColor White
 Write-Host "  - 24 Movimientos de Kardex" -ForegroundColor White
 Write-Host "  - 5 Configuraciones del sistema" -ForegroundColor White
 Write-Host ""
-Write-Host "Comandos útiles:" -ForegroundColor Yellow
+Write-Host "Comandos utiles:" -ForegroundColor Yellow
 Write-Host "  Ver logs:           docker-compose logs -f [servicio]" -ForegroundColor Cyan
 Write-Host "  Detener todo:       docker-compose down" -ForegroundColor Cyan
 Write-Host "  Reiniciar servicio: docker-compose restart [servicio]" -ForegroundColor Cyan
