@@ -67,7 +67,7 @@ services:
     build:
       context: ./backend-toolrent
       dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
+    image: ${DOCKER_USERNAME:-fergusone}/toolrent-backend:latest
     container_name: toolrent-backend-1
     restart: unless-stopped
     environment:
@@ -98,7 +98,7 @@ services:
     build:
       context: ./backend-toolrent
       dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
+    image: ${DOCKER_USERNAME:-fergusone}/toolrent-backend:latest
     container_name: toolrent-backend-2
     restart: unless-stopped
     environment:
@@ -129,7 +129,7 @@ services:
     build:
       context: ./backend-toolrent
       dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
+    image: ${DOCKER_USERNAME:-fergusone}/toolrent-backend:latest
     container_name: toolrent-backend-3
     restart: unless-stopped
     environment:
@@ -181,7 +181,7 @@ services:
     build:
       context: ./toolrent-frontend
       dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
+    image: ${DOCKER_USERNAME:-fergusone}/toolrent-frontend:latest
     container_name: toolrent-frontend-1
     restart: unless-stopped
     depends_on:
@@ -199,7 +199,7 @@ services:
     build:
       context: ./toolrent-frontend
       dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
+    image: ${DOCKER_USERNAME:-fergusone}/toolrent-frontend:latest
     container_name: toolrent-frontend-2
     restart: unless-stopped
     depends_on:
@@ -217,7 +217,7 @@ services:
     build:
       context: ./toolrent-frontend
       dockerfile: Dockerfile
-    image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
+    image: ${DOCKER_USERNAME:-fergusone}/toolrent-frontend:latest
     container_name: toolrent-frontend-3
     restart: unless-stopped
     depends_on:
