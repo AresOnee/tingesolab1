@@ -64,6 +64,9 @@ services:
 
   # ====== BACKEND - REPLICA 1 ======
   backend-1:
+    build:
+      context: ./backend-toolrent
+      dockerfile: Dockerfile
     image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
     container_name: toolrent-backend-1
     restart: unless-stopped
@@ -92,6 +95,9 @@ services:
 
   # ====== BACKEND - REPLICA 2 ======
   backend-2:
+    build:
+      context: ./backend-toolrent
+      dockerfile: Dockerfile
     image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
     container_name: toolrent-backend-2
     restart: unless-stopped
@@ -120,6 +126,9 @@ services:
 
   # ====== BACKEND - REPLICA 3 ======
   backend-3:
+    build:
+      context: ./backend-toolrent
+      dockerfile: Dockerfile
     image: ${DOCKER_USERNAME:-aresone}/toolrent-backend:latest
     container_name: toolrent-backend-3
     restart: unless-stopped
@@ -169,6 +178,9 @@ services:
 
   # ====== FRONTEND ======
   frontend:
+    build:
+      context: ./toolrent-frontend
+      dockerfile: Dockerfile
     image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
     container_name: toolrent-frontend
     restart: unless-stopped
