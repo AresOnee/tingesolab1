@@ -79,36 +79,22 @@ Write-Success "Contenedores antiguos eliminados"
 Write-Host ""
 
 # ============================================
-# PASO 3: Construir imágenes (opcional)
+# PASO 3: Construir imágenes (con UTF-8 configurado)
 # ============================================
 if (!$SkipBuild) {
-    Write-Step "Construyendo imágenes Docker..."
+    Write-Step "Construyendo imágenes Docker con configuración UTF-8..."
     Write-Info "Esto puede tomar varios minutos la primera vez..."
 
-    # Backend
-    Write-Info "Construyendo backend..."
-    Set-Location backend-toolrent
-    docker build -t aresone/toolrent-backend:latest . 2>&1 | Out-Null
+    # Usar docker compose build para reconstruir con los cambios de UTF-8
+    Write-Info "Reconstruyendo backend y frontend con UTF-8..."
+    docker compose build --no-cache backend-1 backend-2 backend-3 frontend
+
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Fallo al construir imagen del backend"
-        Set-Location ..
+        Write-Error "Fallo al construir imágenes"
         exit 1
     }
-    Set-Location ..
-    Write-Success "Backend construido"
 
-    # Frontend
-    Write-Info "Construyendo frontend..."
-    Set-Location toolrent-frontend
-    docker build -t aresone/toolrent-frontend:latest . 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Fallo al construir imagen del frontend"
-        Set-Location ..
-        exit 1
-    }
-    Set-Location ..
-    Write-Success "Frontend construido"
-
+    Write-Success "Imágenes construidas con configuración UTF-8"
     Write-Host ""
 } else {
     Write-Info "Omitiendo construcción de imágenes (se usarán las existentes)"
