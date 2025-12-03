@@ -6,7 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class DemoApplicationTests {
 
     @Test
@@ -22,8 +22,9 @@ class DemoApplicationTests {
     void mainMethodExecutes() {
         // Verifica que el metodo main puede ejecutarse
         // Esto aumentará la cobertura del metodo main
+        // Configuramos puerto 0 para que use un puerto aleatorio
         assertThatCode(() -> {
-            DemoApplication.main(new String[] {});
+            DemoApplication.main(new String[] {"--server.port=0"});
         }).doesNotThrowAnyException();
     }
 }
