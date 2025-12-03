@@ -218,30 +218,9 @@ print_success "Keycloak está operativo y realm importado"
 echo ""
 
 # ============================================
-# PASO 7: Importar datos de ejemplo
+# PASO 7: Esperar a que backends estén listos y creen las tablas
 # ============================================
-if [ "$SKIP_DATA" = false ]; then
-    print_step "Importando datos de ejemplo desde seed-data.sql..."
-
-    cat seed-data.sql | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
-
-    if [ $? -ne 0 ]; then
-        print_error "Fallo al importar datos de ejemplo"
-        print_info "Puedes intentar manualmente: docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent < seed-data.sql"
-        exit 1
-    fi
-
-    print_success "Datos de ejemplo importados correctamente"
-    echo ""
-else
-    print_info "Omitiendo importación de datos de ejemplo"
-    echo ""
-fi
-
-# ============================================
-# PASO 8: Esperar a que backends estén listos
-# ============================================
-print_step "Esperando a que backends estén listos..."
+print_step "Esperando a que backends estén listos y creen las tablas..."
 
 sleep 15
 
@@ -271,6 +250,27 @@ for backend in "${backends[@]}"; do
 done
 
 echo ""
+
+# ============================================
+# PASO 8: Importar datos de ejemplo (después de que las tablas existan)
+# ============================================
+if [ "$SKIP_DATA" = false ]; then
+    print_step "Importando datos de ejemplo desde seed-data.sql..."
+
+    cat seed-data.sql | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
+
+    if [ $? -ne 0 ]; then
+        print_error "Fallo al importar datos de ejemplo"
+        print_info "Puedes intentar manualmente: docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent < seed-data.sql"
+        exit 1
+    fi
+
+    print_success "Datos de ejemplo importados correctamente"
+    echo ""
+else
+    print_info "Omitiendo importación de datos de ejemplo"
+    echo ""
+fi
 
 # ============================================
 # PASO 9: Verificar estado final
