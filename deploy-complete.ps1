@@ -219,15 +219,41 @@ Write-Host ""
 if (!$SkipData) {
     Write-Step "Importando datos de ejemplo desde seed-data.sql..."
 
-    Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
+    # Método confiable: copiar el archivo al contenedor y ejecutar desde ahí
+    # Esto evita problemas de codificación con PowerShell
+    Write-Info "Copiando seed-data.sql al contenedor MySQL..."
+    docker cp seed-data.sql toolrent-mysql:/tmp/seed-data.sql
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Fallo al importar datos de ejemplo"
-        Write-Info "Puedes intentar manualmente: Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent"
+        Write-Error "Fallo al copiar seed-data.sql al contenedor"
         exit 1
     }
 
-    Write-Success "Datos de ejemplo importados correctamente"
+    Write-Info "Importando datos con codificación UTF-8..."
+    docker exec -i toolrent-mysql bash -c "mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent < /tmp/seed-data.sql"
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Fallo al importar datos de ejemplo"
+        exit 1
+    }
+
+    # Verificar que los datos se importaron correctamente con UTF-8
+    Write-Info "Verificando caracteres acentuados..."
+    $verification = docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent -e "SELECT name FROM clients LIMIT 1" 2>$null
+    if ($verification -match "María") {
+        Write-Success "Datos de ejemplo importados correctamente con UTF-8 ✓"
+    } else {
+        Write-Host "[WARNING] Los datos se importaron pero puede haber problemas de codificación" -ForegroundColor Yellow
+    }
+
+    # Limpiar archivo temporal
+    docker exec -i toolrent-mysql rm /tmp/seed-data.sql 2>$null
+
+    # Reiniciar backends para que carguen los datos actualizados
+    Write-Info "Reiniciando backends para cargar datos actualizados..."
+    docker compose restart backend-1 backend-2 backend-3 2>$null
+    Start-Sleep -Seconds 5
+
     Write-Host ""
 } else {
     Write-Info "Omitiendo importación de datos de ejemplo"
