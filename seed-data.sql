@@ -19,14 +19,13 @@ TRUNCATE TABLE system_config;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================
--- 1. CONFIGURACIÓN DEL SISTEMA (Épica 6: Gestión de Tarifas)
+-- 1. CONFIGURACIÓN DEL SISTEMA (Épica 4: Gestión de Tarifas)
 -- ============================================
+-- ✅ Solo configuraciones que se usan en el código
 INSERT INTO system_config (id, config_key, config_value, description, last_modified, modified_by) VALUES
 (1, 'TARIFA_ARRIENDO_DIARIA', 5000.00, 'Tarifa base de arriendo por día (CLP)', NOW(), 'admin'),
 (2, 'TARIFA_MULTA_DIARIA', 2000.00, 'Multa por día de atraso (CLP)', NOW(), 'admin'),
-(3, 'DIAS_PRESTAMO_MAXIMO', 14.00, 'Días máximos de préstamo permitido', NOW(), 'admin'),
-(4, 'MULTA_DANO_REPARABLE', 10000.00, 'Multa por daño reparable (CLP)', NOW(), 'admin'),
-(5, 'MULTA_DANO_IRREPARABLE', 100.00, 'Porcentaje del valor de reposición por daño irreparable', NOW(), 'admin');
+(3, 'CARGO_REPARACION', 10000.00, 'Cargo fijo por reparación de herramientas con daños leves', NOW(), 'admin');
 
 -- ============================================
 -- 2. CLIENTES (Épica 2: Gestión de Clientes)
@@ -182,7 +181,7 @@ INSERT INTO kardex (id, movement_type, tool_id, quantity, username, movement_dat
 -- ✅ 9 Clientes (7 Activos + 2 Restringidos)
 -- ✅ 19 Herramientas (5 categorías diferentes, varios estados)
 -- ✅ 18 Préstamos (3 activos + 2 atrasados + 13 cerrados)
--- ✅ 5 Configuraciones del sistema
+-- ✅ 3 Configuraciones del sistema (solo las que se usan en el código)
 -- ✅ 24 Movimientos de kardex (trazabilidad completa)
 --
 -- CASOS DE USO CUBIERTOS:
