@@ -21,6 +21,7 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./init-database.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
       - toolrent-network
     healthcheck:
