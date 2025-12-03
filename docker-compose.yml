@@ -1,7 +1,7 @@
 # ============================================
 # DOCKER COMPOSE - TOOLRENT APPLICATION
 # ============================================
-# Servicios: MySQL, Backend (3 réplicas), Nginx LB, Frontend, Keycloak
+# Servicios: MySQL, Backend (3 réplicas), Nginx Backend LB, Frontend (3 réplicas), Nginx Frontend LB, Keycloak
 
 version: '3.8'
 
@@ -176,22 +176,77 @@ services:
       timeout: 5s
       retries: 3
 
-  # ====== FRONTEND ======
-  frontend:
+  # ====== FRONTEND - REPLICA 1 ======
+  frontend-1:
     build:
       context: ./toolrent-frontend
       dockerfile: Dockerfile
     image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
-    container_name: toolrent-frontend
+    container_name: toolrent-frontend-1
     restart: unless-stopped
-    ports:
-      - "5173:80"
     depends_on:
       - nginx-backend
     networks:
       - toolrent-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ====== FRONTEND - REPLICA 2 ======
+  frontend-2:
+    build:
+      context: ./toolrent-frontend
+      dockerfile: Dockerfile
+    image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
+    container_name: toolrent-frontend-2
+    restart: unless-stopped
+    depends_on:
+      - nginx-backend
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ====== FRONTEND - REPLICA 3 ======
+  frontend-3:
+    build:
+      context: ./toolrent-frontend
+      dockerfile: Dockerfile
+    image: ${DOCKER_USERNAME:-aresone}/toolrent-frontend:latest
+    container_name: toolrent-frontend-3
+    restart: unless-stopped
+    depends_on:
+      - nginx-backend
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ====== NGINX LOAD BALANCER (para Frontend) ======
+  nginx-frontend:
+    image: nginx:1.25-alpine
+    container_name: toolrent-nginx-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-frontend.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend-1
+      - frontend-2
+      - frontend-3
+    networks:
+      - toolrent-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/nginx-frontend-health"]
       interval: 30s
       timeout: 5s
       retries: 3
