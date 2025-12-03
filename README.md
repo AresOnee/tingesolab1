@@ -256,5 +256,3 @@ Desarrollado por **AresOne** para la Evaluación 1 - Métodos/Técnicas de Ingen
 - Comunidad de Spring Boot y React
 
 ---
-
-**⭐ Si este proyecto te fue útil, dale una estrella en GitHub!**
