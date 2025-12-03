@@ -194,30 +194,9 @@ Write-Success "Keycloak está operativo y realm importado"
 Write-Host ""
 
 # ============================================
-# PASO 7: Importar datos de ejemplo
+# PASO 7: Esperar a que backends estén listos y creen las tablas
 # ============================================
-if (!$SkipData) {
-    Write-Step "Importando datos de ejemplo desde seed-data.sql..."
-
-    Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Fallo al importar datos de ejemplo"
-        Write-Info "Puedes intentar manualmente: Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent"
-        exit 1
-    }
-
-    Write-Success "Datos de ejemplo importados correctamente"
-    Write-Host ""
-} else {
-    Write-Info "Omitiendo importación de datos de ejemplo"
-    Write-Host ""
-}
-
-# ============================================
-# PASO 8: Esperar a que backends estén listos
-# ============================================
-Write-Step "Esperando a que backends estén listos..."
+Write-Step "Esperando a que backends estén listos y creen las tablas..."
 
 Start-Sleep -Seconds 15
 
@@ -247,6 +226,27 @@ foreach ($backend in $backends) {
 }
 
 Write-Host ""
+
+# ============================================
+# PASO 8: Importar datos de ejemplo (después de que las tablas existan)
+# ============================================
+if (!$SkipData) {
+    Write-Step "Importando datos de ejemplo desde seed-data.sql..."
+
+    Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Fallo al importar datos de ejemplo"
+        Write-Info "Puedes intentar manualmente: Get-Content seed-data.sql -Encoding UTF8 | docker exec -i toolrent-mysql mysql -uroot -proot123 --default-character-set=utf8mb4 toolrent"
+        exit 1
+    }
+
+    Write-Success "Datos de ejemplo importados correctamente"
+    Write-Host ""
+} else {
+    Write-Info "Omitiendo importación de datos de ejemplo"
+    Write-Host ""
+}
 
 # ============================================
 # PASO 9: Verificar estado final
